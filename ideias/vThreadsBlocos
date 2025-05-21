@@ -1,0 +1,55 @@
+private static void initializeFactors(List<Rating> ratings) throws InterruptedException {
+    allUsers = ConcurrentHashMap.newKeySet();
+    allGenres = ConcurrentHashMap.newKeySet();
+
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        // Popular allUsers e allGenres em paralelo (ainda por item porque é rápido)
+        for (Rating r : ratings) {
+            executor.submit(() -> {
+                allUsers.add(r.getUserId());
+                allGenres.addAll(r.getGenres());
+            });
+        }
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.MINUTES);
+    }
+
+    // Inicializar userFactors em blocos
+    int blockSize = 100;
+    List<String> userList = new ArrayList<>(allUsers);
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        for (int i = 0; i < userList.size(); i += blockSize) {
+            int start = i;
+            int end = Math.min(i + blockSize, userList.size());
+            executor.submit(() -> {
+                ThreadLocalRandom random = ThreadLocalRandom.current();
+                for (int j = start; j < end; j++) {
+                    String user = userList.get(j);
+                    double[] features = random.doubles(NUM_FEATURES, 0, 0.1).toArray();
+                    userFactors.put(user, features);
+                }
+            });
+        }
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.MINUTES);
+    }
+
+    // Inicializar genreFactors em blocos
+    List<String> genreList = new ArrayList<>(allGenres);
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        for (int i = 0; i < genreList.size(); i += blockSize) {
+            int start = i;
+            int end = Math.min(i + blockSize, genreList.size());
+            executor.submit(() -> {
+                ThreadLocalRandom random = ThreadLocalRandom.current();
+                for (int j = start; j < end; j++) {
+                    String genre = genreList.get(j);
+                    double[] features = random.doubles(NUM_FEATURES, 0, 0.1).toArray();
+                    genreFactors.put(genre, features);
+                }
+            });
+        }
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.MINUTES);
+    }
+}

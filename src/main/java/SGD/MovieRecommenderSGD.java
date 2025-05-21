@@ -52,6 +52,8 @@ public class MovieRecommenderSGD {
     private static Set<String> allUsers = new HashSet<>();
 
     public static void main(String[] args) throws Exception {
+        long startTime = System.nanoTime();
+
         List<Rating> ratings = loadRatings("dataset/ratings_20MB.json");
         saveOriginalMatrixWithNulls(ratings, "dataset/avaliacoes_iniciais_com_nulls.json");
         initializeFactors(ratings);
@@ -59,6 +61,9 @@ public class MovieRecommenderSGD {
         Map<String, Map<String, Double>> matrix = predictRatingsMatrix(ratings);
         printRatingsMatrix(matrix, ratings);
         savePredictedRatingsToJson(ratings, matrix, "dataset/predicted_ratings.json");
+
+        long endTime = System.nanoTime();
+        System.out.printf("Tempo total: %.2f segundos%n", (endTime - startTime) / 1e9);
     }
 
     private static List<Rating> loadRatings(String filename) throws IOException {
