@@ -1,0 +1,27 @@
+🔐 Como adicionar sincronização depois (sem reescrever tudo)
+Use ConcurrentHashMap<String, Object> como "lock map" para usuários e gêneros:
+
+java
+Copiar
+Editar
+private static final ConcurrentMap<String, Object> userLocks = new ConcurrentHashMap<>();
+private static final ConcurrentMap<String, Object> genreLocks = new ConcurrentHashMap<>();
+
+private static Object getUserLock(String userId) {
+    return userLocks.computeIfAbsent(userId, k -> new Object());
+}
+
+private static Object getGenreLock(String genre) {
+    return genreLocks.computeIfAbsent(genre, k -> new Object());
+}
+Adapte a chamada no trainModelPrepared:
+
+java
+Copiar
+Editar
+synchronized (getUserLock(user)) {
+    synchronized (getGenreLock(genre)) {
+        updateVectors(userVec, genreVec, error);
+    }
+}
+✅ Com isso, você tem controle total sobre o acesso concorrente e pode medir o impacto da sincronização quando quiser.

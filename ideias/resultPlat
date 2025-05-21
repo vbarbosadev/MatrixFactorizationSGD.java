@@ -1,0 +1,10 @@
+"C:\Program Files\Java\jdk-24\bin\java.exe" "-javaagent:C:\Program Files\JetBrains\IntelliJ IDEA 2025.1\lib\idea_rt.jar=64661" -Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -classpath "C:\Users\Suporte\Documents\vinicius\Programação Concorrente\SGDMFjava\target\classes;C:\Users\Suporte\.m2\repository\com\google\code\gson\gson\2.10.1\gson-2.10.1.jar;C:\Users\Suporte\.m2\repository\org\jetbrains\annotations\26.0.2\annotations-26.0.2.jar" SGD.MovieRecommenderSGDvPlatform
+lidos em: 0,56 segundos
+initializeFactors rodou em: 0,14 segundos
+Iniciando Treinamento (pronto para sincronização futura)
+trainingModel rodou em: 0,82 segundos
+matrixGen rodou em: 12,94 segundos
+saveJson rodou em: 3,33 segundos
+Tempo total: 17,78 segundos
+
+Process finished with exit code 0

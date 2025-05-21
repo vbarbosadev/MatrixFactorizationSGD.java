@@ -12,7 +12,7 @@ import com.google.gson.reflect.TypeToken;
 import org.jetbrains.annotations.NotNull;
 
 
-public class MovieRecommenderSGDvThreads {
+public class MovieRecommenderSGDvPlatform {
 
     private static class Rating {
         String user_id;
@@ -54,15 +54,16 @@ public class MovieRecommenderSGDvThreads {
             List<Thread> threads = new ArrayList<>();
 
             for (String filename : filenames) {
-                Thread t = Thread.ofVirtual().start(() -> {
+                Thread t = new Thread(() -> {
                     try (FileReader reader = new FileReader(filename)) {
-                        List<Rating> localList = new Gson().fromJson(reader, new TypeToken<List<Rating>>() {}.getType());
+                        List<Rating> localList = gson.fromJson(reader, ratingListType);
                         ratings.addAll(localList);
                     } catch (IOException e) {
                         System.err.println("Erro ao ler arquivo: " + filename);
                         e.printStackTrace();
                     }
                 });
+                t.start(); // Lembre-se: platform threads precisam ser iniciadas manualmente
                 threads.add(t);
             }
 
@@ -77,12 +78,12 @@ public class MovieRecommenderSGDvThreads {
             return ratings;
         }
 
-
         // Sobrecarga para um único arquivo
         public static ConcurrentLinkedQueue<Rating> loadRatingsParallel(String filename) {
             return loadRatingsParallel(Set.of(filename));
         }
     }
+
 
     private static final int NUM_FEATURES = 10;
     private static final double LEARNING_RATE = 0.01;
@@ -102,19 +103,16 @@ public class MovieRecommenderSGDvThreads {
 
         ConcurrentLinkedQueue<Rating> ratings = RatingLoader.loadRatingsParallel(arquivos);
 
-
         long readTime = System.nanoTime();
-
-
         System.out.printf("lidos em: %.2f segundos%n", (readTime - startTime) / 1e9);
-
-
 
         //saveOriginalMatrixWithNulls(ratings, "dataset/avaliacoes_iniciais_com_nulls.json");
         initializeFactors(ratings);
 
         long initialTime = System.nanoTime();
         System.out.printf("initializeFactors rodou em: %.2f segundos%n", (initialTime - readTime) / 1e9);
+
+
 
 
         trainModel(ratings);
@@ -132,7 +130,7 @@ public class MovieRecommenderSGDvThreads {
         //printRatingsMatrix(matrix, ratings);
 
         long printTime = System.nanoTime();
-        //System.out.printf("printMatrix rodou em: %.2f segundos%n", (printTime - matrixTime) / 1e9);
+      //  System.out.printf("printMatrix rodou em: %.2f segundos%n", (printTime - matrixTime) / 1e9);
 
         savePredictedRatingsToJson(ratings, matrix, "dataset/predicted_ratingsPlatform.json");
 
@@ -149,144 +147,160 @@ public class MovieRecommenderSGDvThreads {
         allUsers = ConcurrentHashMap.newKeySet();
         allGenres = ConcurrentHashMap.newKeySet();
 
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        // Etapa 1: Popular allUsers e allGenres
+        ExecutorService executor1 = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
-            // Popular allUsers e allGenres em paralelo
-            for (Rating r : ratings) {
-                executor.submit(() -> {
-                    allUsers.add(r.getUserId());
-                    allGenres.addAll(r.getGenres());
-                });
-            }
-
-            executor.shutdown();
-            executor.awaitTermination(1, TimeUnit.MINUTES);
+        for (Rating r : ratings) {
+            executor1.submit(() -> {
+                allUsers.add(r.getUserId());
+                allGenres.addAll(r.getGenres());
+            });
         }
 
-        // Inicializar userFactors e genreFactors em paralelo, usando ThreadLocalRandom
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        executor1.shutdown();
+        executor1.awaitTermination(1, TimeUnit.MINUTES);
 
-            for (String user : allUsers) {
-                executor.submit(() -> {
-                    double[] features = ThreadLocalRandom.current()
-                            .doubles(NUM_FEATURES, 0, 0.1)
-                            .toArray();
-                    userFactors.put(user, features);
-                });
-            }
+        // Etapa 2: Inicializar userFactors e genreFactors
+        ExecutorService executor2 = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
-            for (String genre : allGenres) {
-                executor.submit(() -> {
-                    double[] features = ThreadLocalRandom.current()
-                            .doubles(NUM_FEATURES, 0, 0.1)
-                            .toArray();
-                    genreFactors.put(genre, features);
-                });
-            }
-
-            executor.shutdown();
-            executor.awaitTermination(1, TimeUnit.MINUTES);
+        for (String user : allUsers) {
+            executor2.submit(() -> {
+                double[] features = ThreadLocalRandom.current()
+                        .doubles(NUM_FEATURES, 0, 0.1)
+                        .toArray();
+                userFactors.put(user, features);
+            });
         }
+
+        for (String genre : allGenres) {
+            executor2.submit(() -> {
+                double[] features = ThreadLocalRandom.current()
+                        .doubles(NUM_FEATURES, 0, 0.1)
+                        .toArray();
+                genreFactors.put(genre, features);
+            });
+        }
+
+        executor2.shutdown();
+        executor2.awaitTermination(1, TimeUnit.MINUTES);
     }
 
+    private static void trainModel(ConcurrentLinkedQueue<Rating> ratings) {
+        System.out.println("Iniciando Treinamento (pronto para sincronização futura)");
 
+        List<Rating> ratingList = new ArrayList<>(ratings);
 
-    private static void trainModel(ConcurrentLinkedQueue<Rating> ratings) throws InterruptedException {
-        System.out.println("Iniciando Treinamento");
         for (int epoch = 0; epoch < NUM_EPOCHS; epoch++) {
-            try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-                for (Rating r : ratings) {
-                    executor.submit(() -> {
-                        String user = r.getUserId();
-                        double[] userVec = userFactors.get(user);
-                        for (String genre : r.getGenres()) {
-                            double[] genreVec = genreFactors.get(genre);
-                            double prediction = dot(userVec, genreVec);
-                            double error = r.getRating() - prediction;
+            ratingList.parallelStream().forEach(rating -> {
+                String user = rating.getUserId();
+                double[] userVec = userFactors.get(user);
 
-                            for (int i = 0; i < NUM_FEATURES; i++) {
-                                double u = userVec[i];
-                                double g = genreVec[i];
-                                userVec[i] += LEARNING_RATE * (error * g - REGULARIZATION * u);
-                                genreVec[i] += LEARNING_RATE * (error * u - REGULARIZATION * g);
-                            }
-                        }
-                    });
+                for (String genre : rating.getGenres()) {
+                    double[] genreVec = genreFactors.get(genre);
+
+                    double prediction = dot(userVec, genreVec);
+                    double error = rating.getRating() - prediction;
+
+                    // ⛔ Se quiser sincronizar depois:
+                    // synchronized (getUserLock(user)) { ... }
+                    // synchronized (getGenreLock(genre)) { ... }
+                    updateVectors(userVec, genreVec, error);
                 }
-                executor.shutdown();
-                executor.awaitTermination(5, TimeUnit.MINUTES);
-            }
+            });
+        }
+    }
+
+    private static void updateVectors(double[] userVec, double[] genreVec, double error) {
+        for (int i = 0; i < NUM_FEATURES; i++) {
+            double u = userVec[i];
+            double g = genreVec[i];
+            userVec[i] += LEARNING_RATE * (error * g - REGULARIZATION * u);
+            genreVec[i] += LEARNING_RATE * (error * u - REGULARIZATION * g);
         }
     }
 
 
-    private static ConcurrentMap<String, Map<String, Double>> predictRatingsMatrix(ConcurrentLinkedQueue<Rating> ratings) {
+    private static ConcurrentMap<String, Map<String, Double>> predictRatingsMatrix(ConcurrentLinkedQueue<Rating> ratings)
+            throws InterruptedException {
+
         // Agrupar ratings por usuário
-        ConcurrentMap<String, ConcurrentLinkedQueue<Rating>> ratingsByUser = new ConcurrentHashMap<>();
+        ConcurrentMap<String, List<Rating>> ratingsByUser = new ConcurrentHashMap<>();
         for (Rating r : ratings) {
             ratingsByUser
-                    .computeIfAbsent(r.getUserId(), k -> new ConcurrentLinkedQueue<>())
+                    .computeIfAbsent(r.getUserId(), k -> new ArrayList<>())
                     .add(r);
         }
 
-        // Matriz final
+        // Lista final com predições
         ConcurrentMap<String, Map<String, Double>> matrix = new ConcurrentHashMap<>();
 
-        // Criar executor de virtual threads
-        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        // Configuração da thread pool com Platform Threads
+        int numThreads = Math.max(2, Runtime.getRuntime().availableProcessors());
+        ExecutorService executor = Executors.newFixedThreadPool(numThreads, Thread.ofPlatform().factory());
 
-        // Lista de futures para cada tarefa de predição
-        List<Future<?>> futures = new ArrayList<>();
+        // Converter ratings para List para acesso mais rápido
+        List<Rating> allRatings = new ArrayList<>(ratings);
+        List<String> userList = new ArrayList<>(allUsers);
 
-        for (String user : allUsers) {
-            Future<?> future = executor.submit(() -> {
-                Map<String, Double> ratingsForUser = new ConcurrentHashMap<>();
-                ConcurrentLinkedQueue<Rating> userRatings = ratingsByUser.getOrDefault(user, new ConcurrentLinkedQueue<>());
+        // Tarefas em chunk por usuário (reduz número de tasks)
+        int chunkSize = (int) Math.ceil(userList.size() / (double) numThreads);
+        List<Callable<Void>> tasks = new ArrayList<>();
 
-                // Copiar as avaliações reais do usuário
-                for (Rating r : userRatings) {
-                    ratingsForUser.put(r.getTitle(), r.getRating());
-                }
+        for (int i = 0; i < userList.size(); i += chunkSize) {
+            int start = i;
+            int end = Math.min(i + chunkSize, userList.size());
+            List<String> chunk = userList.subList(start, end);
 
-                // Predizer avaliações ausentes
-                for (Rating r : ratings) {
-                    if (!ratingsForUser.containsKey(r.getTitle())) {
-                        double predicted = 0.0;
-                        for (String genre : r.getGenres()) {
-                            predicted += dot(userFactors.get(user), genreFactors.get(genre));
-                        }
-                        predicted /= r.getGenres().size();
-                        ratingsForUser.put(r.getTitle(), predicted);
+            tasks.add(() -> {
+                for (String user : chunk) {
+                    Map<String, Double> userRatings = new HashMap<>();
+
+                    // Ratings reais do usuário
+                    List<Rating> knownRatings = ratingsByUser.getOrDefault(user, List.of());
+                    for (Rating r : knownRatings) {
+                        userRatings.put(r.getTitle(), r.getRating());
                     }
+
+                    double[] userVec = userFactors.get(user);
+                    if (userVec == null) continue;
+
+                    // Predizer apenas filmes não avaliados por este usuário
+                    for (Rating r : allRatings) {
+                        String title = r.getTitle();
+                        if (userRatings.containsKey(title)) continue;
+
+                        List<String> genres = r.getGenres();
+                        if (genres.isEmpty()) continue;
+
+                        double predicted = 0.0;
+                        for (String genre : genres) {
+                            double[] genreVec = genreFactors.get(genre);
+                            if (genreVec != null) {
+                                predicted += dot(userVec, genreVec);
+                            }
+                        }
+
+                        predicted /= genres.size();
+                        userRatings.put(title, predicted);
+                    }
+
+                    matrix.put(user, userRatings);
                 }
-
-                matrix.put(user, ratingsForUser);
+                return null;
             });
-
-            futures.add(future);
         }
 
-        // Esperar todas as tarefas terminarem
-        for (Future<?> f : futures) {
-            try {
-                f.get(); // bloqueia até a tarefa terminar
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } catch (ExecutionException e) {
-                e.printStackTrace(); // tratar falha da tarefa
-            }
-        }
-
-        executor.shutdown(); // liberar recursos
+        // Executa tarefas
+        executor.invokeAll(tasks);
+        executor.shutdown();
+        executor.awaitTermination(30, TimeUnit.MINUTES);
 
         return matrix;
     }
 
 
-
-    private static void printRatingsMatrix( ConcurrentMap<String, Map<String, Double>> matrix,
-                                            ConcurrentLinkedQueue<Rating> ratings) {
-        // Lista concorrente e thread-safe de filmes (ordem mantida pela lista normal)
+    private static void printRatingsMatrix(ConcurrentMap<String, Map<String, Double>> matrix,
+                                           ConcurrentLinkedQueue<Rating> ratings) throws InterruptedException {
         List<String> movies = ratings.stream()
                 .map(Rating::getTitle)
                 .distinct()
@@ -298,12 +312,14 @@ public class MovieRecommenderSGDvThreads {
         }
         System.out.println();
 
-        // Usar ConcurrentLinkedQueue para threads (virtual threads)
-        List<Thread> threads = new ArrayList<>();
+        ExecutorService executor = Executors.newFixedThreadPool(
+                Math.max(2, Runtime.getRuntime().availableProcessors()), Thread.ofPlatform().factory());
+
         ConcurrentLinkedQueue<String> outputLines = new ConcurrentLinkedQueue<>();
+        List<Callable<Void>> tasks = new ArrayList<>();
 
         for (String user : allUsers) {
-            Thread t = Thread.ofVirtual().start(() -> {
+            tasks.add(() -> {
                 StringBuilder sb = new StringBuilder();
                 sb.append(user).append("\t");
 
@@ -313,22 +329,16 @@ public class MovieRecommenderSGDvThreads {
                 }
 
                 outputLines.add(sb.toString());
+                return null;
             });
-            threads.add(t);
         }
 
-        // Espera terminar todas as threads
-        for (Thread t : threads) {
-            try {
-                t.join();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
+        executor.invokeAll(tasks);
+        executor.shutdown();
 
-        // Imprime as linhas (ordem não garantida pois concorrente; se quiser ordem, pode ordenar)
         outputLines.forEach(System.out::println);
     }
+
 
 
 
@@ -338,7 +348,7 @@ public class MovieRecommenderSGDvThreads {
             ConcurrentLinkedQueue<Rating> ratings,
             Map<String, Map<String, Double>> predictedMatrix,
             String filename
-    ) {
+    ) throws InterruptedException {
         List<String> allUsersOrdered = ratings.stream()
                 .map(Rating::getUserId)
                 .distinct()
@@ -357,10 +367,14 @@ public class MovieRecommenderSGDvThreads {
         }
 
         ConcurrentSkipListMap<String, Map<String, Object>> output = new ConcurrentSkipListMap<>();
-        List<Thread> threads = new ArrayList<>();
+
+        ExecutorService executor = Executors.newFixedThreadPool(
+                Math.max(2, Runtime.getRuntime().availableProcessors()), Thread.ofPlatform().factory());
+
+        List<Callable<Void>> tasks = new ArrayList<>();
 
         for (String user : allUsersOrdered) {
-            Thread t = Thread.ofVirtual().start(() -> {
+            tasks.add(() -> {
                 Map<String, Object> userEntry = new LinkedHashMap<>();
                 userEntry.put("user_id", user);
 
@@ -378,17 +392,12 @@ public class MovieRecommenderSGDvThreads {
 
                 userEntry.put("movies", movieList);
                 output.put(user, userEntry);
+                return null;
             });
-            threads.add(t);
         }
 
-        for (Thread t : threads) {
-            try {
-                t.join();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
+        executor.invokeAll(tasks);
+        executor.shutdown();
 
         try (FileWriter writer = new FileWriter(filename)) {
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
@@ -398,6 +407,14 @@ public class MovieRecommenderSGDvThreads {
         }
     }
 
+
+    private static <T> List<List<T>> splitList(List<T> list, int chunkSize) {
+        List<List<T>> chunks = new ArrayList<>();
+        for (int i = 0; i < list.size(); i += chunkSize) {
+            chunks.add(list.subList(i, Math.min(i + chunkSize, list.size())));
+        }
+        return chunks;
+    }
 
 
 
