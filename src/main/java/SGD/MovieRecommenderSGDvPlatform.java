@@ -99,7 +99,7 @@ public class MovieRecommenderSGDvPlatform {
     public static void main(String[] args) throws Exception {
         long startTime = System.nanoTime();
 
-        Set<String> arquivos = Set.of("dataset/ratings_20MB.json");
+        Set<String> arquivos = Set.of("dataset/ratings_100MB.json");
 
         ConcurrentLinkedQueue<Rating> ratings = RatingLoader.loadRatingsParallel(arquivos);
 
@@ -223,7 +223,7 @@ public class MovieRecommenderSGDvPlatform {
     private static ConcurrentMap<String, Map<String, Double>> predictRatingsMatrix(ConcurrentLinkedQueue<Rating> ratings)
             throws InterruptedException {
 
-        // Agrupar ratings por usuário
+        // Pré-processar ratings por usuário
         ConcurrentMap<String, List<Rating>> ratingsByUser = new ConcurrentHashMap<>();
         for (Rating r : ratings) {
             ratingsByUser
@@ -231,18 +231,23 @@ public class MovieRecommenderSGDvPlatform {
                     .add(r);
         }
 
-        // Lista final com predições
+        // Pré-processar ratings por título
+        ConcurrentMap<String, List<Rating>> ratingsByTitle = new ConcurrentHashMap<>();
+        for (Rating r : ratings) {
+            ratingsByTitle
+                    .computeIfAbsent(r.getTitle(), k -> new ArrayList<>())
+                    .add(r);
+        }
+
+        // Resultado final
         ConcurrentMap<String, Map<String, Double>> matrix = new ConcurrentHashMap<>();
 
-        // Configuração da thread pool com Platform Threads
+        // Thread pool com platform threads
         int numThreads = Math.max(2, Runtime.getRuntime().availableProcessors());
         ExecutorService executor = Executors.newFixedThreadPool(numThreads, Thread.ofPlatform().factory());
 
-        // Converter ratings para List para acesso mais rápido
-        List<Rating> allRatings = new ArrayList<>(ratings);
+        // Transformar allUsers para lista se necessário
         List<String> userList = new ArrayList<>(allUsers);
-
-        // Tarefas em chunk por usuário (reduz número de tasks)
         int chunkSize = (int) Math.ceil(userList.size() / (double) numThreads);
         List<Callable<Void>> tasks = new ArrayList<>();
 
@@ -253,35 +258,43 @@ public class MovieRecommenderSGDvPlatform {
 
             tasks.add(() -> {
                 for (String user : chunk) {
-                    Map<String, Double> userRatings = new HashMap<>();
-
-                    // Ratings reais do usuário
-                    List<Rating> knownRatings = ratingsByUser.getOrDefault(user, List.of());
-                    for (Rating r : knownRatings) {
-                        userRatings.put(r.getTitle(), r.getRating());
-                    }
-
                     double[] userVec = userFactors.get(user);
                     if (userVec == null) continue;
 
-                    // Predizer apenas filmes não avaliados por este usuário
-                    for (Rating r : allRatings) {
-                        String title = r.getTitle();
+                    Map<String, Double> userRatings = new HashMap<>();
+                    List<Rating> knownRatings = ratingsByUser.get(user);
+                    if (knownRatings != null) {
+                        for (Rating r : knownRatings) {
+                            userRatings.put(r.getTitle(), r.getRating());
+                        }
+                    }
+
+                    for (Map.Entry<String, List<Rating>> entry : ratingsByTitle.entrySet()) {
+                        String title = entry.getKey();
                         if (userRatings.containsKey(title)) continue;
 
-                        List<String> genres = r.getGenres();
-                        if (genres.isEmpty()) continue;
+                        List<Rating> ratingsForTitle = entry.getValue();
+                        if (ratingsForTitle.isEmpty()) continue;
+
+                        // Pegamos os gêneros da primeira ocorrência (assumindo consistência)
+                        List<String> genres = ratingsForTitle.get(0).getGenres();
+                        if (genres == null || genres.isEmpty()) continue;
 
                         double predicted = 0.0;
+                        int validGenres = 0;
+
                         for (String genre : genres) {
                             double[] genreVec = genreFactors.get(genre);
                             if (genreVec != null) {
                                 predicted += dot(userVec, genreVec);
+                                validGenres++;
                             }
                         }
 
-                        predicted /= genres.size();
-                        userRatings.put(title, predicted);
+                        if (validGenres > 0) {
+                            predicted /= validGenres;
+                            userRatings.put(title, predicted);
+                        }
                     }
 
                     matrix.put(user, userRatings);
@@ -290,13 +303,13 @@ public class MovieRecommenderSGDvPlatform {
             });
         }
 
-        // Executa tarefas
         executor.invokeAll(tasks);
         executor.shutdown();
         executor.awaitTermination(30, TimeUnit.MINUTES);
 
         return matrix;
     }
+
 
 
     private static void printRatingsMatrix(ConcurrentMap<String, Map<String, Double>> matrix,

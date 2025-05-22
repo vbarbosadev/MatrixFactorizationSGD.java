@@ -7,4 +7,25 @@ matrixGen rodou em: 12,94 segundos
 saveJson rodou em: 3,33 segundos
 Tempo total: 17,78 segundos
 
-Process finished with exit code 0
+
+
+meu pc:
+
+lidos em: 0,74 segundos
+initializeFactors rodou em: 0,20 segundos
+Iniciando Treinamento (pronto para sincronização futura)
+trainingModel rodou em: 0,81 segundos
+matrixGen rodou em: 15,41 segundos
+Tempo total: 17,16 segundos
+
+
+100MB:
+
+
+lidos em: 1,46 segundos
+initializeFactors rodou em: 0,35 segundos
+Iniciando Treinamento (pronto para sincronização futura)
+trainingModel rodou em: 2,77 segundos
+matrixGen rodou em: 0,58 segundos
+saveJson rodou em: 81,08 segundos
+Tempo total: 86,24 segundos

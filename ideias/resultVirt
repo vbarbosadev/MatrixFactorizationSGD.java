@@ -1,0 +1,30 @@
+20MB:
+
+lidos em: 0,66 segundos
+initializeFactors rodou em: 0,45 segundos
+Iniciando Treinamento
+trainingModel rodou em: 5,00 segundos
+matrixGen rodou em: 13,80 segundos
+Tempo total: 19,92 segundos
+
+==========================================================
+
+100MB:
+
+lidos em: 2,50 segundos
+initializeFactors rodou em: 1,16 segundos
+Iniciando Treinamento
+trainingModel rodou em: 25,22 segundos
+matrixGen rodou em: 290,46 segundos
+Tempo total: 319,34 segundos
+
+Process finished with exit code 0
+
+
+lidos em: 4,33 segundos
+initializeFactors rodou em: 0,84 segundos
+Iniciando Treinamento
+trainingModel rodou em: 19,77 segundos
+matrixGen rodou em: 298,29 segundos
+saveJson rodou em: 53,24 segundos
+Tempo total: 376,47 segundos

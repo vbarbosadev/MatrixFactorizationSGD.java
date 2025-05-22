@@ -98,7 +98,7 @@ public class MovieRecommenderSGDvThreads {
     public static void main(String[] args) throws Exception {
         long startTime = System.nanoTime();
 
-        Set<String> arquivos = Set.of("dataset/ratings_20MB.json");
+        Set<String> arquivos = Set.of("dataset/ratings_100MB.json");
 
         ConcurrentLinkedQueue<Rating> ratings = RatingLoader.loadRatingsParallel(arquivos);
 
@@ -138,7 +138,7 @@ public class MovieRecommenderSGDvThreads {
 
         long saveTime = System.nanoTime();
         System.out.printf("saveJson rodou em: %.2f segundos%n", (saveTime - printTime) / 1e9);
-
+//
 
         long endTime = System.nanoTime();
         System.out.printf("Tempo total: %.2f segundos%n", (endTime - startTime) / 1e9);
