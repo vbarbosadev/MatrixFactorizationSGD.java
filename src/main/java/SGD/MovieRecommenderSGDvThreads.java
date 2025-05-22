@@ -98,7 +98,7 @@ public class MovieRecommenderSGDvThreads {
     public static void main(String[] args) throws Exception {
         long startTime = System.nanoTime();
 
-        Set<String> arquivos = Set.of("dataset/ratings_100MB.json");
+        Set<String> arquivos = Set.of("dataset/ratings_100MB.json", "dataset/ratings_100MB2.json");
 
         ConcurrentLinkedQueue<Rating> ratings = RatingLoader.loadRatingsParallel(arquivos);
 
@@ -134,7 +134,7 @@ public class MovieRecommenderSGDvThreads {
         long printTime = System.nanoTime();
         //System.out.printf("printMatrix rodou em: %.2f segundos%n", (printTime - matrixTime) / 1e9);
 
-        savePredictedRatingsToJson(ratings, matrix, "dataset/predicted_ratingsPlatform.json");
+        savePredictedRatingsToJson(ratings, matrix, "dataset/predicted_ratingsVirtual.json");
 
         long saveTime = System.nanoTime();
         System.out.printf("saveJson rodou em: %.2f segundos%n", (saveTime - printTime) / 1e9);
@@ -220,6 +220,7 @@ public class MovieRecommenderSGDvThreads {
     }
 
 
+
     private static ConcurrentMap<String, Map<String, Double>> predictRatingsMatrix(ConcurrentLinkedQueue<Rating> ratings) {
         // Agrupar ratings por usuário
         ConcurrentMap<String, ConcurrentLinkedQueue<Rating>> ratingsByUser = new ConcurrentHashMap<>();
@@ -281,7 +282,6 @@ public class MovieRecommenderSGDvThreads {
 
         return matrix;
     }
-
 
 
     private static void printRatingsMatrix( ConcurrentMap<String, Map<String, Double>> matrix,

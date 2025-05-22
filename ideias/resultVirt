@@ -7,6 +7,17 @@ trainingModel rodou em: 5,00 segundos
 matrixGen rodou em: 13,80 segundos
 Tempo total: 19,92 segundos
 
+
+Eduarda:
+
+lidos em: 0,59 segundos
+initializeFactors rodou em: 0,28 segundos
+Iniciando Treinamento
+trainingModel rodou em: 9,71 segundos
+matrixGen rodou em: 11,21 segundos
+saveJson rodou em: 4,01 segundos
+Tempo total: 25,80 segundos
+
 ==========================================================
 
 100MB:
@@ -28,3 +39,16 @@ trainingModel rodou em: 19,77 segundos
 matrixGen rodou em: 298,29 segundos
 saveJson rodou em: 53,24 segundos
 Tempo total: 376,47 segundos
+
+
+2x100MB:
+
+lidos em: 1,86 segundos
+initializeFactors rodou em: 2,53 segundos
+Iniciando Treinamento
+trainingModel rodou em: 74,43 segundos
+matrixGen rodou em: 633,69 segundos
+saveJson rodou em: 29,97 segundos
+Tempo total: 742,55 segundos
+
+Process finished with exit code 0
