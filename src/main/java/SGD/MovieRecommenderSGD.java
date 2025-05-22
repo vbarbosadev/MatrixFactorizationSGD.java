@@ -1,0 +1,500 @@
+package SGD;
+
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.lang.reflect.Type;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import com.google.gson.*;
+import com.google.gson.reflect.TypeToken;
+import org.jetbrains.annotations.NotNull;
+
+
+public class MovieRecommenderSGD {
+
+    // Definição da classe Rating MODIFICADA
+    private static class Rating {
+        String user_id;
+        String title;
+        // O nome do campo foi alterado de 'genre' para 'genres'
+        // para corresponder ao JSON de entrada.
+        List<String> genres; // <<--- MODIFICADO AQUI
+        double rating;
+
+        public Rating(String user_id, String title, List<String> genres, double rating) { // <<--- MODIFICADO AQUI (parâmetro)
+            this.user_id = user_id;
+            this.title = title;
+            this.genres = genres; // <<--- MODIFICADO AQUI (atribuição)
+            this.rating = rating;
+        }
+
+        public String getUserId() { return user_id; }
+        public String getTitle() { return title; }
+
+        // O getter já estava nomeado corretamente como getGenres(),
+        // agora ele retorna o campo 'genres' correto.
+        public List<String> getGenres() { return genres; } // <<--- Retorna o campo 'genres'
+        public double getRating() { return rating; }
+    }
+
+    // Classe RatingLoader (NÃO PRECISA DE MUDANÇAS AQUI, pois usa a definição de Rating)
+    private static class RatingLoader {
+        private static final Gson gson = new Gson();
+        private static final Type ratingListType = new TypeToken<List<Rating>>() {}.getType();
+
+        private static ConcurrentLinkedQueue<Rating> loadRatingsParallel(Set<String> filenames) {
+            ConcurrentLinkedQueue<Rating> ratings = new ConcurrentLinkedQueue<>();
+            List<Future<?>> futures = new ArrayList<>();
+            try (ExecutorService virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
+                for (String filename : filenames) {
+                    Future<?> future = virtualThreadExecutor.submit(() -> {
+                        try (FileReader reader = new FileReader(filename)) {
+                            // Gson usará a definição atualizada da classe Rating para o parsing
+                            List<Rating> localList = gson.fromJson(reader, ratingListType);
+                            if (localList != null) {
+                                ratings.addAll(localList);
+                            }
+                        } catch (IOException e) {
+                            System.err.println("Erro ao ler arquivo: " + filename + " (" + e.getClass().getSimpleName() + ": " + e.getMessage() + ")");
+                        } catch (JsonSyntaxException e) {
+                            System.err.println("Erro de sintaxe JSON no arquivo: " + filename + " (" + e.getMessage() + ")");
+                        }
+                    });
+                    futures.add(future);
+                }
+                for (Future<?> f : futures) {
+                    try {
+                        f.get();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        System.err.println("Carregamento de ratings interrompido.");
+                    } catch (ExecutionException e) {
+                        System.err.println("Erro durante execução do carregamento de arquivo: " + e.getCause());
+                    }
+                }
+            }
+            return ratings;
+        }
+        private static ConcurrentLinkedQueue<Rating> loadRatingsParallel(String filename) {
+            return loadRatingsParallel(Set.of(filename));
+        }
+    }
+
+    private static final int NUM_FEATURES = 10;
+    private static final double LEARNING_RATE = 0.01;
+    private static final double REGULARIZATION = 0.02;
+    private static final int NUM_EPOCHS = 100;
+
+    private static final ConcurrentHashMap<String, double[]> userFactors = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, double[]> genreFactors = new ConcurrentHashMap<>();
+
+    private static final ConcurrentHashMap<String, ReentrantLock> userLocks = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, ReentrantLock> genreLocks = new ConcurrentHashMap<>();
+
+
+    private static Set<String> allGenres = ConcurrentHashMap.newKeySet();
+    private static Set<String> allUsers = ConcurrentHashMap.newKeySet();
+
+
+    public static void initializeFactors(@NotNull ConcurrentLinkedQueue<Rating> ratings) throws InterruptedException {
+        allUsers.clear();
+        allGenres.clear();
+
+        ExecutorService popularExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        for (Rating r : ratings) {
+            popularExecutor.submit(() -> {
+                allUsers.add(r.getUserId());
+                // Nenhuma mudança aqui, pois r.getGenres() já retorna a lista correta
+                if (r.getGenres() != null) { // Adicionada verificação de nulo para segurança
+                    allGenres.addAll(r.getGenres());
+                }
+            });
+        }
+        popularExecutor.shutdown();
+        popularExecutor.awaitTermination(1, TimeUnit.MINUTES);
+
+        ExecutorService factorInitExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        for (String user : allUsers) {
+            factorInitExecutor.submit(() -> {
+                double[] features = ThreadLocalRandom.current().doubles(NUM_FEATURES, 0, 0.1).toArray();
+                userFactors.put(user, features);
+                userLocks.put(user, new ReentrantLock());
+            });
+        }
+        for (String genre : allGenres) {
+            factorInitExecutor.submit(() -> {
+                double[] features = ThreadLocalRandom.current().doubles(NUM_FEATURES, 0, 0.1).toArray();
+                genreFactors.put(genre, features);
+                genreLocks.put(genre, new ReentrantLock());
+            });
+        }
+        factorInitExecutor.shutdown();
+        factorInitExecutor.awaitTermination(1, TimeUnit.MINUTES);
+    }
+
+    private static void trainModel(ConcurrentLinkedQueue<Rating> ratings) {
+        System.out.println("Iniciando Treinamento com Locks Explícitos");
+        List<Rating> ratingList = new ArrayList<>(ratings);
+
+        for (int epoch = 0; epoch < NUM_EPOCHS; epoch++) {
+            ratingList.parallelStream().forEach(rating -> {
+                String user = rating.getUserId();
+                double[] userVec = userFactors.get(user);
+                ReentrantLock uLock = userLocks.get(user);
+
+                if (userVec == null || uLock == null) {
+                    return;
+                }
+
+                // Nenhuma mudança aqui, pois rating.getGenres() já retorna a lista correta
+                List<String> currentGenres = rating.getGenres();
+                if (currentGenres == null) return; // Adicionada verificação de nulo
+
+                for (String genre : currentGenres) {
+                    double[] genreVec = genreFactors.get(genre);
+                    ReentrantLock gLock = genreLocks.get(genre);
+
+                    if (genreVec == null || gLock == null) {
+                        continue;
+                    }
+
+                    ReentrantLock firstLock;
+                    ReentrantLock secondLock;
+
+                    if (user.compareTo(genre) < 0) {
+                        firstLock = uLock;
+                        secondLock = gLock;
+                    } else if (user.compareTo(genre) > 0) {
+                        firstLock = gLock;
+                        secondLock = uLock;
+                    } else {
+                        firstLock = uLock;
+                        secondLock = gLock;
+                    }
+
+                    firstLock.lock();
+                    try {
+                        secondLock.lock();
+                        try {
+                            double prediction = dot(userVec, genreVec);
+                            double error = rating.getRating() - prediction;
+                            updateVectors(userVec, genreVec, error);
+                        } finally {
+                            secondLock.unlock();
+                        }
+                    } finally {
+                        firstLock.unlock();
+                    }
+                }
+            });
+            if ((epoch + 1) % 10 == 0) {
+                System.out.println("Epoch " + (epoch + 1) + "/" + NUM_EPOCHS + " concluída.");
+            }
+        }
+    }
+
+    private static void updateVectors(double[] userVec, double[] genreVec, double error) {
+        for (int i = 0; i < NUM_FEATURES; i++) {
+            double u = userVec[i];
+            double g = genreVec[i];
+            userVec[i] += LEARNING_RATE * (error * g - REGULARIZATION * u);
+            genreVec[i] += LEARNING_RATE * (error * u - REGULARIZATION * g);
+        }
+    }
+
+    private static ConcurrentMap<String, Map<String, Double>> predictRatingsMatrix(ConcurrentLinkedQueue<Rating> ratings)
+            throws InterruptedException {
+        ConcurrentMap<String, List<Rating>> ratingsByUser = new ConcurrentHashMap<>();
+        for (Rating r : ratings) {
+            ratingsByUser.computeIfAbsent(r.getUserId(), k -> new ArrayList<>()).add(r);
+        }
+        ConcurrentMap<String, List<Rating>> ratingsByTitle = new ConcurrentHashMap<>();
+        for (Rating r : ratings) {
+            ratingsByTitle.computeIfAbsent(r.getTitle(), k -> new ArrayList<>()).add(r);
+        }
+        ConcurrentMap<String, Map<String, Double>> matrix = new ConcurrentHashMap<>();
+        int numThreads = Math.max(2, Runtime.getRuntime().availableProcessors());
+        ExecutorService executor = Executors.newFixedThreadPool(numThreads, Thread.ofPlatform().factory());
+        List<String> userList = new ArrayList<>(allUsers);
+        if (userList.isEmpty() && !ratings.isEmpty()) {
+            ratings.stream().map(Rating::getUserId).distinct().forEach(userList::add);
+        }
+        int chunkSize = (userList.isEmpty()) ? 0 : (int) Math.ceil(userList.size() / (double) numThreads);
+        if (chunkSize == 0 && !userList.isEmpty()) chunkSize = 1;
+
+        List<Callable<Void>> tasks = new ArrayList<>();
+        for (int i = 0; i < userList.size(); i += chunkSize) {
+            int start = i;
+            int end = Math.min(i + chunkSize, userList.size());
+            List<String> chunk = userList.subList(start, end);
+            tasks.add(() -> {
+                for (String user : chunk) {
+                    double[] userVec = userFactors.get(user);
+                    if (userVec == null) continue;
+                    Map<String, Double> userRatings = new HashMap<>();
+                    List<Rating> knownRatings = ratingsByUser.get(user);
+                    if (knownRatings != null) {
+                        for (Rating r : knownRatings) {
+                            userRatings.put(r.getTitle(), r.getRating());
+                        }
+                    }
+                    for (Map.Entry<String, List<Rating>> entry : ratingsByTitle.entrySet()) {
+                        String title = entry.getKey();
+                        if (userRatings.containsKey(title)) continue;
+                        List<Rating> ratingsForTitle = entry.getValue();
+                        if (ratingsForTitle.isEmpty()) continue;
+                        // Nenhuma mudança aqui, pois getGenres() já retorna a lista correta
+                        List<String> currentGenres = ratingsForTitle.get(0).getGenres();
+                        if (currentGenres == null || currentGenres.isEmpty()) continue;
+                        double predicted = 0.0;
+                        int validGenres = 0;
+                        for (String genre : currentGenres) {
+                            double[] genreVec = genreFactors.get(genre);
+                            if (genreVec != null) {
+                                predicted += dot(userVec, genreVec);
+                                validGenres++;
+                            }
+                        }
+                        if (validGenres > 0) {
+                            predicted /= validGenres;
+                            userRatings.put(title, predicted);
+                        }
+                    }
+                    matrix.put(user, userRatings);
+                }
+                return null;
+            });
+        }
+        if (!tasks.isEmpty()) {
+            executor.invokeAll(tasks);
+        }
+        executor.shutdown();
+        executor.awaitTermination(30, TimeUnit.MINUTES);
+        return matrix;
+    }
+
+    private static void savePredictedRatingsToMultipleFiles(
+            ConcurrentLinkedQueue<Rating> ratings,
+            Map<String, Map<String, Double>> predictedMatrix,
+            String outputDirectory,
+            String baseFilename
+    ) {
+        List<String> allUsersOrdered = ratings.stream()
+                .map(Rating::getUserId)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+        if (allUsersOrdered.isEmpty() && !predictedMatrix.isEmpty()) {
+            allUsersOrdered.addAll(predictedMatrix.keySet());
+            Collections.sort(allUsersOrdered);
+        }
+
+        List<String> allTitlesOrdered = ratings.stream()
+                .map(Rating::getTitle)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+        if (allTitlesOrdered.isEmpty() && !predictedMatrix.isEmpty()) {
+            Set<String> titlesSet = new HashSet<>();
+            predictedMatrix.values().forEach(userMap -> titlesSet.addAll(userMap.keySet()));
+            allTitlesOrdered.addAll(titlesSet);
+            Collections.sort(allTitlesOrdered);
+        }
+
+        Map<String, List<String>> genreMap = new ConcurrentHashMap<>();
+        for (Rating r : ratings) {
+            // Nenhuma mudança aqui, pois r.getGenres() já retorna a lista correta
+            if (r.getGenres() != null) { // Adicionada verificação de nulo
+                genreMap.putIfAbsent(r.getTitle(), r.getGenres());
+            }
+        }
+
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        List<Future<?>> futures = new ArrayList<>();
+
+        int usersPerFileTarget = 15;
+        int usersPerFile = allUsersOrdered.isEmpty() ? 1 : (int) Math.ceil((double) allUsersOrdered.size() / usersPerFileTarget);
+        if (usersPerFile == 0 && !allUsersOrdered.isEmpty()) usersPerFile = 1;
+
+        System.out.printf("Iniciando salvamento de %d usuários em blocos de aproximadamente %d usuários por arquivo (total %d arquivos).%n",
+                allUsersOrdered.size(), usersPerFile, allUsersOrdered.isEmpty() ? 0 : (int)Math.ceil((double)allUsersOrdered.size()/usersPerFile) );
+
+        try (ExecutorService virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
+            int filePart = 0;
+            if (allUsersOrdered.isEmpty()) {
+                System.out.println("Nenhum usuário para salvar.");
+            }
+
+            for (int i = 0; i < allUsersOrdered.size(); i += usersPerFile) {
+                filePart++;
+                int end = Math.min(i + usersPerFile, allUsersOrdered.size());
+                List<String> userChunk = allUsersOrdered.subList(i, end);
+                String chunkFilename = String.format("%s_part_%d.json", baseFilename, filePart);
+                String fullPath = outputDirectory + (outputDirectory.endsWith("/") ? "" : "/") + chunkFilename;
+                final List<String> currentUserChunk = new ArrayList<>(userChunk);
+
+                Future<?> future = virtualThreadExecutor.submit(() -> {
+                    List<Map<String, Object>> usersOutputForChunk = new ArrayList<>();
+                    for (String user : currentUserChunk) {
+                        Map<String, Object> userEntry = new LinkedHashMap<>();
+                        userEntry.put("user_id", user);
+                        List<Map<String, Object>> movieList = new ArrayList<>();
+                        Map<String, Double> userRatings = predictedMatrix.getOrDefault(user, Map.of());
+                        for (String title : allTitlesOrdered) {
+                            Map<String, Object> movieData = new LinkedHashMap<>();
+                            movieData.put("title", title);
+                            // genreMap já contém a lista correta de gêneros
+                            movieData.put("genre", genreMap.getOrDefault(title, List.of()));
+                            Double rating = userRatings.get(title);
+                            movieData.put("rating", rating != null ? rating : "null");
+                            movieList.add(movieData);
+                        }
+                        userEntry.put("movies", movieList);
+                        usersOutputForChunk.add(userEntry);
+                    }
+                    try (FileWriter writer = new FileWriter(fullPath)) {
+                        gson.toJson(usersOutputForChunk, writer);
+                    } catch (IOException e) {
+                        System.err.println("Erro ao escrever arquivo " + chunkFilename + ": " + e.getMessage());
+                    }
+                });
+                futures.add(future);
+            }
+            for (Future<?> f : futures) {
+                try {
+                    f.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    System.err.println("Thread principal interrompida enquanto aguardava o salvamento dos arquivos.");
+                } catch (ExecutionException e) {
+                    System.err.println("Erro na execução do salvamento de arquivo: " + (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()));
+                }
+            }
+        }
+        System.out.println("Processo de salvamento em múltiplos arquivos concluído.");
+    }
+
+    public static double dot(double[] a, double[] b) {
+        if (a == null || b == null || a.length != b.length) return 0.0;
+        final int length = a.length;
+        double sum0 = 0.0, sum1 = 0.0, sum2 = 0.0, sum3 = 0.0;
+        int i = 0;
+        for (; i <= length - 4; i += 4) {
+            sum0 += a[i] * b[i];
+            sum1 += a[i + 1] * b[i + 1];
+            sum2 += a[i + 2] * b[i + 2];
+            sum3 += a[i + 3] * b[i + 3];
+        }
+        double sum = sum0 + sum1 + sum2 + sum3;
+        for (; i < length; i++) {
+            sum += a[i] * b[i];
+        }
+        return sum;
+    }
+
+
+
+    public static Set<String> carregarArquivosDaPasta(String caminhoDaPasta) throws IOException {
+        System.out.println("Lendo arquivos da pasta: " + caminhoDaPasta);
+        try (Stream<Path> streamDePaths = Files.list(Paths.get(caminhoDaPasta))) {
+            Set<String> arquivosEncontrados = streamDePaths
+                    .filter(Files::isRegularFile) // Garante que estamos pegando apenas arquivos
+                    .peek(path -> System.out.println("Encontrado arquivo: " + path.toString())) // Opcional: para logar os arquivos encontrados
+                    .map(Path::toString)          // Converte o Path para String
+                    .collect(Collectors.toSet()); // Coleta os resultados em um Set
+            if (arquivosEncontrados.isEmpty()) {
+                System.out.println("Nenhum arquivo encontrado na pasta: " + caminhoDaPasta);
+            }
+            return arquivosEncontrados;
+        }
+    }
+
+
+
+    public static void main(String[] args) throws Exception {
+
+        // Substitua a linha original pela chamada da função
+        Set<String> arquivos;
+        String pastaDeDatasets = "dataset/avaliacao_individual"; // Defina o nome da sua pasta aqui
+        try {
+            arquivos = carregarArquivosDaPasta(pastaDeDatasets);
+            if (arquivos.isEmpty()) {
+                System.err.println("Nenhum arquivo encontrado em '" + pastaDeDatasets + "'. Verifique o caminho e o conteúdo da pasta.");
+                return; // Encerra se nenhum arquivo for encontrado para evitar erros subsequentes
+            }
+        } catch (IOException e) {
+            System.err.println("Erro ao ler arquivos da pasta '" + pastaDeDatasets + "': " + e.getMessage());
+            // e.printStackTrace(); // Descomente para mais detalhes do erro
+            return; // Encerra em caso de erro de leitura da pasta
+        }
+
+        long startTime = System.nanoTime();
+
+        ConcurrentLinkedQueue<Rating> ratings = RatingLoader.loadRatingsParallel(arquivos);
+
+        long readTime = System.nanoTime();
+        System.out.printf("lidos em: %.2f segundos%n", (readTime - startTime) / 1e9);
+
+        // Certifique-se de que 'ratings' não está vazio antes de prosseguir
+        if (ratings.isEmpty() && !arquivos.isEmpty()) {
+            System.err.println("Apesar dos arquivos serem listados, nenhum rating foi carregado. Verifique o formato dos arquivos e a lógica de RatingLoader.loadRatingsParallel.");
+            return;
+        } else if (ratings.isEmpty()) {
+            // Mensagem já dada acima, mas podemos reforçar.
+            System.err.println("Nenhum rating para processar.");
+            return;
+        }
+
+        //saveOriginalMatrixWithNulls(ratings, "dataset/avaliacoes_iniciais_com_nulls.json");
+        initializeFactors(ratings);
+
+        long initialTime = System.nanoTime();
+        System.out.printf("initializeFactors rodou em: %.2f segundos%n", (initialTime - readTime) / 1e9);
+
+
+
+
+        trainModel(ratings);
+
+        long trainingTime = System.nanoTime();
+        System.out.printf("trainingModel rodou em: %.2f segundos%n", (trainingTime - initialTime) / 1e9);
+
+
+        ConcurrentMap<String, Map<String, Double>> matrix = predictRatingsMatrix(ratings);
+
+        long matrixTime = System.nanoTime();
+        System.out.printf("matrixGen rodou em: %.2f segundos%n", (matrixTime - trainingTime) / 1e9);
+
+
+        //printRatingsMatrix(matrix, ratings);
+
+        long printTime = System.nanoTime();
+        //  System.out.printf("printMatrix rodou em: %.2f segundos%n", (printTime - matrixTime) / 1e9);
+
+        // --- Chamada da Função Modificada ---
+        String outputDir = "output_ratings"; // Crie este diretório ou use um existente
+        new java.io.File(outputDir).mkdirs(); // Garante que o diretório exista
+        String baseFilename = "predicted_user_ratings";
+
+
+        savePredictedRatingsToMultipleFiles(ratings, matrix, outputDir, baseFilename);
+
+
+        long saveTime = System.nanoTime();
+        System.out.printf("saveJson rodou em: %.2f segundos%n", (saveTime - printTime) / 1e9);
+
+
+        long endTime = System.nanoTime();
+        System.out.printf("Tempo total: %.2f segundos%n", (endTime - startTime) / 1e9);
+    }
+
+
+}
