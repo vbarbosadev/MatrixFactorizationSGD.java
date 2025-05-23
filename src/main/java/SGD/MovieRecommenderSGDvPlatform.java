@@ -8,18 +8,28 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import com.google.gson.*;
+import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
 import org.jetbrains.annotations.NotNull;
 
 
 public class MovieRecommenderSGDvPlatform {
 
+
+
+    // ... dentro da sua classe MovieRecommenderSGDvPlatform
     private static class Rating {
         String user_id;
         String title;
+
+        // A anotação abaixo resolve o problema.
+        // Ela diz ao Gson: "Tente mapear o JSON 'genres'. Se não encontrar, tente 'genre'."
+        @SerializedName(value = "genres", alternate = "genre")
         List<String> genre;
+
         double rating;
 
+        // Nenhum outra alteração é necessária na classe ou no resto do código
         public Rating(String user_id, String title, List<String> genre, double rating) {
             this.user_id = user_id;
             this.title = title;
@@ -99,7 +109,7 @@ public class MovieRecommenderSGDvPlatform {
     public static void main(String[] args) throws Exception {
         long startTime = System.nanoTime();
 
-        Set<String> arquivos = Set.of("dataset/ratings_20MB.json");
+        Set<String> arquivos = Set.of("dataset/avaliacao_individual/avaliacoes_completas100MB.json");
 
         ConcurrentLinkedQueue<Rating> ratings = RatingLoader.loadRatingsParallel(arquivos);
 
