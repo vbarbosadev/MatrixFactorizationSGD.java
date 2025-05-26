@@ -20,7 +20,6 @@ import org.jetbrains.annotations.NotNull;
 
 public class MovieRecommenderSGD {
 
-    // Definição da classe Rating MODIFICADA
     private static class Rating {
         String user_id;
         String title;
@@ -45,48 +44,9 @@ public class MovieRecommenderSGD {
         public double getRating() { return rating; }
     }
 
-    // Classe RatingLoader (NÃO PRECISA DE MUDANÇAS AQUI, pois usa a definição de Rating)
-    private static class RatingLoader {
-        private static final Gson gson = new Gson();
-        private static final Type ratingListType = new TypeToken<List<Rating>>() {}.getType();
+    private static final Gson gson = new Gson();
+    private static final Type ratingListType = new TypeToken<List<Rating>>() {}.getType();
 
-        private static ConcurrentLinkedQueue<Rating> loadRatingsParallel(Set<String> filenames) {
-            ConcurrentLinkedQueue<Rating> ratings = new ConcurrentLinkedQueue<>();
-            List<Future<?>> futures = new ArrayList<>();
-            try (ExecutorService virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
-                for (String filename : filenames) {
-                    Future<?> future = virtualThreadExecutor.submit(() -> {
-                        try (FileReader reader = new FileReader(filename)) {
-                            // Gson usará a definição atualizada da classe Rating para o parsing
-                            List<Rating> localList = gson.fromJson(reader, ratingListType);
-                            if (localList != null) {
-                                ratings.addAll(localList);
-                            }
-                        } catch (IOException e) {
-                            System.err.println("Erro ao ler arquivo: " + filename + " (" + e.getClass().getSimpleName() + ": " + e.getMessage() + ")");
-                        } catch (JsonSyntaxException e) {
-                            System.err.println("Erro de sintaxe JSON no arquivo: " + filename + " (" + e.getMessage() + ")");
-                        }
-                    });
-                    futures.add(future);
-                }
-                for (Future<?> f : futures) {
-                    try {
-                        f.get();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        System.err.println("Carregamento de ratings interrompido.");
-                    } catch (ExecutionException e) {
-                        System.err.println("Erro durante execução do carregamento de arquivo: " + e.getCause());
-                    }
-                }
-            }
-            return ratings;
-        }
-        private static ConcurrentLinkedQueue<Rating> loadRatingsParallel(String filename) {
-            return loadRatingsParallel(Set.of(filename));
-        }
-    }
 
     private static final int NUM_FEATURES = 10;
     private static final double LEARNING_RATE = 0.01;
@@ -100,17 +60,55 @@ public class MovieRecommenderSGD {
     private static final ConcurrentHashMap<String, ReentrantLock> genreLocks = new ConcurrentHashMap<>();
 
 
-    private static Set<String> allGenres = ConcurrentHashMap.newKeySet();
-    private static Set<String> allUsers = ConcurrentHashMap.newKeySet();
+    private static final Set<String> allGenres = ConcurrentHashMap.newKeySet();
+    private static final Set<String> allUsers = ConcurrentHashMap.newKeySet();
+
+
+
+    private static ConcurrentLinkedQueue<Rating> loadRatingsParallel(Set<String> filenames) {
+        ConcurrentLinkedQueue<Rating> ratings = new ConcurrentLinkedQueue<>();
+        List<Future<?>> futures = new ArrayList<>();
+        try (ExecutorService virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (String filename : filenames) {
+                Future<?> future = virtualThreadExecutor.submit(() -> {
+                    try (FileReader reader = new FileReader(filename)) {
+                        List<Rating> localList = gson.fromJson(reader, ratingListType);
+                        if (localList != null) {
+                            ratings.addAll(localList);
+                        }
+                    } catch (IOException e) {
+                        System.err.println("Erro ao ler arquivo: " + filename + " (" + e.getClass().getSimpleName() + ": " + e.getMessage() + ")");
+                    } catch (JsonSyntaxException e) {
+                        System.err.println("Erro de sintaxe JSON no arquivo: " + filename + " (" + e.getMessage() + ")");
+                    }
+                });
+                futures.add(future);
+            }
+            for (Future<?> f : futures) {
+                try {
+                    f.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    System.err.println("Carregamento de ratings interrompido.");
+                } catch (ExecutionException e) {
+                    System.err.println("Erro durante execução do carregamento de arquivo: " + e.getCause());
+                }
+            }
+        }
+        return ratings;
+    }
+    private static ConcurrentLinkedQueue<Rating> loadRatingsParallel(String filename) {
+        return loadRatingsParallel(Set.of(filename));
+    }
 
 
     public static void initializeFactors(@NotNull ConcurrentLinkedQueue<Rating> ratings) throws InterruptedException {
         allUsers.clear();
         allGenres.clear();
 
-        ExecutorService popularExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         for (Rating r : ratings) {
-            popularExecutor.submit(() -> {
+            executor.submit(() -> {
                 allUsers.add(r.getUserId());
                 // Nenhuma mudança aqui, pois r.getGenres() já retorna a lista correta
                 if (r.getGenres() != null) { // Adicionada verificação de nulo para segurança
@@ -118,8 +116,7 @@ public class MovieRecommenderSGD {
                 }
             });
         }
-        popularExecutor.shutdown();
-        popularExecutor.awaitTermination(1, TimeUnit.MINUTES);
+        executor.shutdown();
 
         ExecutorService factorInitExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         for (String user : allUsers) {
@@ -137,7 +134,6 @@ public class MovieRecommenderSGD {
             });
         }
         factorInitExecutor.shutdown();
-        factorInitExecutor.awaitTermination(1, TimeUnit.MINUTES);
     }
 
     private static void trainModel(ConcurrentLinkedQueue<Rating> ratings) {
@@ -154,9 +150,8 @@ public class MovieRecommenderSGD {
                     return;
                 }
 
-                // Nenhuma mudança aqui, pois rating.getGenres() já retorna a lista correta
                 List<String> currentGenres = rating.getGenres();
-                if (currentGenres == null) return; // Adicionada verificação de nulo
+                if (currentGenres == null) return;
 
                 for (String genre : currentGenres) {
                     double[] genreVec = genreFactors.get(genre);
@@ -232,9 +227,8 @@ public class MovieRecommenderSGD {
 
         List<Callable<Void>> tasks = new ArrayList<>();
         for (int i = 0; i < userList.size(); i += chunkSize) {
-            int start = i;
             int end = Math.min(i + chunkSize, userList.size());
-            List<String> chunk = userList.subList(start, end);
+            List<String> chunk = userList.subList(i, end);
             tasks.add(() -> {
                 for (String user : chunk) {
                     double[] userVec = userFactors.get(user);
@@ -251,7 +245,6 @@ public class MovieRecommenderSGD {
                         if (userRatings.containsKey(title)) continue;
                         List<Rating> ratingsForTitle = entry.getValue();
                         if (ratingsForTitle.isEmpty()) continue;
-                        // Nenhuma mudança aqui, pois getGenres() já retorna a lista correta
                         List<String> currentGenres = ratingsForTitle.get(0).getGenres();
                         if (currentGenres == null || currentGenres.isEmpty()) continue;
                         double predicted = 0.0;
@@ -277,7 +270,6 @@ public class MovieRecommenderSGD {
             executor.invokeAll(tasks);
         }
         executor.shutdown();
-        executor.awaitTermination(30, TimeUnit.MINUTES);
         return matrix;
     }
 
@@ -422,6 +414,7 @@ public class MovieRecommenderSGD {
     public static void main(String[] args) throws Exception {
 
         // Substitua a linha original pela chamada da função
+        /*
         Set<String> arquivos;
         String pastaDeDatasets = "dataset/avaliacao_individual"; // Defina o nome da sua pasta aqui
         try {
@@ -435,15 +428,19 @@ public class MovieRecommenderSGD {
             // e.printStackTrace(); // Descomente para mais detalhes do erro
             return; // Encerra em caso de erro de leitura da pasta
         }
+        */
+
+        Set<String> arquivos = Set.of("dataset/ratings_100MB.json");
+
+
 
         long startTime = System.nanoTime();
 
-        ConcurrentLinkedQueue<Rating> ratings = RatingLoader.loadRatingsParallel(arquivos);
+        ConcurrentLinkedQueue<Rating> ratings = loadRatingsParallel(arquivos);
 
         long readTime = System.nanoTime();
         System.out.printf("lidos em: %.2f segundos%n", (readTime - startTime) / 1e9);
 
-        // Certifique-se de que 'ratings' não está vazio antes de prosseguir
         if (ratings.isEmpty() && !arquivos.isEmpty()) {
             System.err.println("Apesar dos arquivos serem listados, nenhum rating foi carregado. Verifique o formato dos arquivos e a lógica de RatingLoader.loadRatingsParallel.");
             return;
