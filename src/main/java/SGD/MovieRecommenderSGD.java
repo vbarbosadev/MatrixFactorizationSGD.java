@@ -19,13 +19,13 @@ public class MovieRecommenderSGD {
     private static class Rating {
         String user_id;
         String title;
-        List<String> genre;
+        List<String> genres;
         double rating;
 
-        public Rating(String user_id, String title, List<String> genre, double rating) {
+        public Rating(String user_id, String title, List<String> genres, double rating) {
             this.user_id = user_id;
             this.title = title;
-            this.genre = genre;
+            this.genres = genres;
             this.rating = rating;
         }
 
@@ -38,7 +38,7 @@ public class MovieRecommenderSGD {
         }
 
         public List<String> getGenres() {
-            return genre;
+            return genres;
         }
 
         public double getRating() {
@@ -146,7 +146,7 @@ public class MovieRecommenderSGD {
     }
 
     public static void trainModel(ConcurrentLinkedQueue<Rating> ratings) {
-        System.out.println("Iniciando Treinamento (pronto para sincronização futura)");
+        System.out.println("Iniciando Treinamento com sincronização robusta contra deadlock.");
 
         List<Rating> ratingList = new ArrayList<>(ratings);
 
@@ -155,21 +155,29 @@ public class MovieRecommenderSGD {
                 String user = rating.getUserId();
                 double[] userVec = userFactors.get(user);
 
-                for (String genre : rating.getGenres()) {
-                    double[] genreVec = genreFactors.get(genre);
+                if (userVec == null) return;
 
-                    double prediction = dot(userVec, genreVec);
-                    double error = rating.getRating() - prediction;
 
-                    // ⛔ Se quiser sincronizar depois:
-                    // synchronized (getUserLock(user)) { ... }
-                    // synchronized (getGenreLock(genre)) { ... }
-                    updateVectors(userVec, genreVec, error);
+                synchronized (userVec) {
+
+                    for (String genre : rating.getGenres()) {
+                        double[] genreVec = genreFactors.get(genre);
+                        if (genreVec == null) continue;
+
+                        double prediction = dot(userVec, genreVec);
+                        double error = rating.getRating() - prediction;
+
+
+                        synchronized (genreVec) {
+                            updateVectors(userVec, genreVec, error);
+                        }
+                    }
                 }
             });
         }
     }
 
+    // O método updateVectors não precisa ser alterado.
     public static void updateVectors(double[] userVec, double[] genreVec, double error) {
         for (int i = 0; i < NUM_FEATURES; i++) {
             double u = userVec[i];
@@ -182,92 +190,78 @@ public class MovieRecommenderSGD {
 
     private static ConcurrentMap<String, Map<String, Double>> predictRatingsMatrix(ConcurrentLinkedQueue<Rating> ratings)
             throws InterruptedException {
-
-        // Pré-processar ratings por usuário
         ConcurrentMap<String, List<Rating>> ratingsByUser = new ConcurrentHashMap<>();
         for (Rating r : ratings) {
-            ratingsByUser
-                    .computeIfAbsent(r.getUserId(), k -> new ArrayList<>())
-                    .add(r);
+            ratingsByUser.computeIfAbsent(r.getUserId(), k -> new ArrayList<>()).add(r);
         }
-
-        // Pré-processar ratings por título
         ConcurrentMap<String, List<Rating>> ratingsByTitle = new ConcurrentHashMap<>();
         for (Rating r : ratings) {
-            ratingsByTitle
-                    .computeIfAbsent(r.getTitle(), k -> new ArrayList<>())
-                    .add(r);
+            ratingsByTitle.computeIfAbsent(r.getTitle(), k -> new ArrayList<>()).add(r);
         }
-
-        // Resultado final
         ConcurrentMap<String, Map<String, Double>> matrix = new ConcurrentHashMap<>();
-
-        // Thread pool com platform threads
         int numThreads = Math.max(2, Runtime.getRuntime().availableProcessors());
         ExecutorService executor = Executors.newFixedThreadPool(numThreads, Thread.ofPlatform().factory());
-
-        // Transformar allUsers para lista se necessário
         List<String> userList = new ArrayList<>(allUsers);
-        int chunkSize = (int) Math.ceil(userList.size() / (double) numThreads);
+        if (userList.isEmpty() && !ratings.isEmpty()) {
+            ratings.stream().map(Rating::getUserId).distinct().forEach(userList::add);
+        }
+        int chunkSize = (userList.isEmpty()) ? 0 : (int) Math.ceil(userList.size() / (double) numThreads);
+        if (chunkSize == 0 && !userList.isEmpty()) chunkSize = 1;
+
         List<Callable<Void>> tasks = new ArrayList<>();
-
         for (int i = 0; i < userList.size(); i += chunkSize) {
-            int start = i;
             int end = Math.min(i + chunkSize, userList.size());
-            List<String> chunk = userList.subList(start, end);
-
+            List<String> chunk = userList.subList(i, end);
             tasks.add(() -> {
                 for (String user : chunk) {
                     double[] userVec = userFactors.get(user);
                     if (userVec == null) continue;
-
                     Map<String, Double> userRatings = new HashMap<>();
                     List<Rating> knownRatings = ratingsByUser.get(user);
                     if (knownRatings != null) {
                         for (Rating r : knownRatings) {
                             userRatings.put(r.getTitle(), r.getRating());
+                            //predicts.getAndIncrement();
                         }
                     }
-
                     for (Map.Entry<String, List<Rating>> entry : ratingsByTitle.entrySet()) {
                         String title = entry.getKey();
                         if (userRatings.containsKey(title)) continue;
-
                         List<Rating> ratingsForTitle = entry.getValue();
                         if (ratingsForTitle.isEmpty()) continue;
-
-                        // Pegamos os gêneros da primeira ocorrência (assumindo consistência)
-                        List<String> genres = ratingsForTitle.get(0).getGenres();
-                        if (genres == null || genres.isEmpty()) continue;
-
+                        List<String> currentGenres = ratingsForTitle.get(0).getGenres();
+                        if (currentGenres == null || currentGenres.isEmpty()) continue;
                         double predicted = 0.0;
                         int validGenres = 0;
-
-                        for (String genre : genres) {
+                        for (String genre : currentGenres) {
                             double[] genreVec = genreFactors.get(genre);
                             if (genreVec != null) {
                                 predicted += dot(userVec, genreVec);
                                 validGenres++;
                             }
                         }
-
                         if (validGenres > 0) {
                             predicted /= validGenres;
                             userRatings.put(title, predicted);
                         }
                     }
-
                     matrix.put(user, userRatings);
+                    //predicts.getAndIncrement();
                 }
                 return null;
             });
         }
-
-        executor.invokeAll(tasks);
+        if (!tasks.isEmpty()) {
+            executor.invokeAll(tasks);
+        }
         executor.shutdown();
-        executor.awaitTermination(30, TimeUnit.MINUTES);
+
+        System.out.println("\n--------------------------------------------------");
+        System.out.println("Total de previsões (predicts) realizadas: ");
+        System.out.println("--------------------------------------------------\n");
 
         return matrix;
+
     }
 
 
@@ -456,7 +450,7 @@ public class MovieRecommenderSGD {
     public static void main(String[] args) throws Exception {
         long startTime = System.nanoTime();
 
-        Set<String> arquivos = Set.of("dataset/ratings_100MB.json", "dataset/ratings_100MB2.json");
+        Set<String> arquivos = Set.of("dataset/avaliacoes_completas100MB.json");
 
         ConcurrentLinkedQueue<Rating> ratings = loadRatingsParallel(arquivos);
 
