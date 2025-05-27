@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -47,6 +48,7 @@ public class MovieRecommenderSGD {
     private static final Gson gson = new Gson();
     private static final Type ratingListType = new TypeToken<List<Rating>>() {}.getType();
 
+    private static final AtomicInteger predicts = new AtomicInteger();
 
     private static final int NUM_FEATURES = 10;
     private static final double LEARNING_RATE = 0.01;
@@ -110,8 +112,7 @@ public class MovieRecommenderSGD {
         for (Rating r : ratings) {
             executor.submit(() -> {
                 allUsers.add(r.getUserId());
-                // Nenhuma mudança aqui, pois r.getGenres() já retorna a lista correta
-                if (r.getGenres() != null) { // Adicionada verificação de nulo para segurança
+                if (r.getGenres() != null) {
                     allGenres.addAll(r.getGenres());
                 }
             });
@@ -238,6 +239,7 @@ public class MovieRecommenderSGD {
                     if (knownRatings != null) {
                         for (Rating r : knownRatings) {
                             userRatings.put(r.getTitle(), r.getRating());
+                            predicts.getAndIncrement();
                         }
                     }
                     for (Map.Entry<String, List<Rating>> entry : ratingsByTitle.entrySet()) {
@@ -262,6 +264,7 @@ public class MovieRecommenderSGD {
                         }
                     }
                     matrix.put(user, userRatings);
+                    //predicts.getAndIncrement();
                 }
                 return null;
             });
@@ -270,7 +273,13 @@ public class MovieRecommenderSGD {
             executor.invokeAll(tasks);
         }
         executor.shutdown();
+
+        System.out.println("\n--------------------------------------------------");
+        System.out.println("Total de previsões (predicts) realizadas: " + predicts);
+        System.out.println("--------------------------------------------------\n");
+
         return matrix;
+
     }
 
     private static void savePredictedRatingsToMultipleFiles(
@@ -303,8 +312,7 @@ public class MovieRecommenderSGD {
 
         Map<String, List<String>> genreMap = new ConcurrentHashMap<>();
         for (Rating r : ratings) {
-            // Nenhuma mudança aqui, pois r.getGenres() já retorna a lista correta
-            if (r.getGenres() != null) { // Adicionada verificação de nulo
+            if (r.getGenres() != null) {
                 genreMap.putIfAbsent(r.getTitle(), r.getGenres());
             }
         }
@@ -398,10 +406,10 @@ public class MovieRecommenderSGD {
         System.out.println("Lendo arquivos da pasta: " + caminhoDaPasta);
         try (Stream<Path> streamDePaths = Files.list(Paths.get(caminhoDaPasta))) {
             Set<String> arquivosEncontrados = streamDePaths
-                    .filter(Files::isRegularFile) // Garante que estamos pegando apenas arquivos
-                    .peek(path -> System.out.println("Encontrado arquivo: " + path.toString())) // Opcional: para logar os arquivos encontrados
-                    .map(Path::toString)          // Converte o Path para String
-                    .collect(Collectors.toSet()); // Coleta os resultados em um Set
+                    .filter(Files::isRegularFile)
+                    .peek(path -> System.out.println("Encontrado arquivo: " + path.toString()))
+                    .map(Path::toString)
+                    .collect(Collectors.toSet());
             if (arquivosEncontrados.isEmpty()) {
                 System.out.println("Nenhum arquivo encontrado na pasta: " + caminhoDaPasta);
             }
@@ -413,10 +421,9 @@ public class MovieRecommenderSGD {
 
     public static void main(String[] args) throws Exception {
 
-        // Substitua a linha original pela chamada da função
         /*
         Set<String> arquivos;
-        String pastaDeDatasets = "dataset/avaliacao_individual"; // Defina o nome da sua pasta aqui
+        String pastaDeDatasets = "dataset/avaliacao_individual";
         try {
             arquivos = carregarArquivosDaPasta(pastaDeDatasets);
             if (arquivos.isEmpty()) {
@@ -477,8 +484,8 @@ public class MovieRecommenderSGD {
         //  System.out.printf("printMatrix rodou em: %.2f segundos%n", (printTime - matrixTime) / 1e9);
 
         // --- Chamada da Função Modificada ---
-        String outputDir = "output_ratings"; // Crie este diretório ou use um existente
-        new java.io.File(outputDir).mkdirs(); // Garante que o diretório exista
+        String outputDir = "output_ratings";
+        new java.io.File(outputDir).mkdirs();
         String baseFilename = "predicted_user_ratings";
 
 
