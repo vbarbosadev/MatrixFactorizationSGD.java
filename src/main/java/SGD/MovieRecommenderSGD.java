@@ -83,7 +83,6 @@ public class MovieRecommenderSGD {
 
 
        Map<String, Map<String, Double>> matrix = predictRatingsMatrix(ratings, movieToGenresMap);
-      //  Map<String, Map<String, Double>> matrix = predictRatingsMatrix(ratings);
 
 
         long matrixTime = System.nanoTime();
@@ -94,8 +93,8 @@ public class MovieRecommenderSGD {
 
         long printTime = System.nanoTime();
 
-        String outputDir = "output_ratings"; // Crie este diretório ou use um existente
-        new java.io.File(outputDir).mkdirs(); // Garante que o diretório exista
+        String outputDir = "output_ratings";
+        new java.io.File(outputDir).mkdirs();
 
         savePredictedRatingsToJson(matrix, allUsers, movieToGenresMap, "dataset/predicted_ratings.json");
 
@@ -155,7 +154,7 @@ public class MovieRecommenderSGD {
             userRatedMovies.computeIfAbsent(r.getUserId(), k -> new HashMap<>()).put(r.getTitle(), r.getRating());
         }
 
-        long predictionCounter = 0; // Adicionado o contador de previsões
+        long predictionCounter = 0;
 
         for (String user : allUsers) {
             Map<String, Double> ratingsForUser = new LinkedHashMap<>();
@@ -183,7 +182,6 @@ public class MovieRecommenderSGD {
             matrix.put(user, ratingsForUser);
         }
 
-        // Imprime o total de previsões realizadas
         System.out.println("\n--------------------------------------------------");
         System.out.println("Total de previsões (predicts) realizadas: " + predictionCounter);
         System.out.println("--------------------------------------------------\n");
