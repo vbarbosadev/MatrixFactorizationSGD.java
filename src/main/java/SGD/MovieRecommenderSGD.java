@@ -1,13 +1,15 @@
 package SGD;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
+
+import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
-import com.google.gson.*;
-import com.google.gson.reflect.TypeToken;
-
 
 public class MovieRecommenderSGD {
 
@@ -24,21 +26,10 @@ public class MovieRecommenderSGD {
             this.rating = rating;
         }
 
-        public String getUserId() {
-            return user_id;
-        }
-
-        public String getTitle() {
-            return title;
-        }
-
-        public List<String> getGenres() {
-            return genre;
-        }
-
-        public double getRating() {
-            return rating;
-        }
+        public String getUserId() { return user_id; }
+        public String getTitle() { return title; }
+        public List<String> getGenres() { return genre; }
+        public double getRating() { return rating; }
     }
 
     private static final int NUM_FEATURES = 10;
@@ -48,29 +39,84 @@ public class MovieRecommenderSGD {
 
     private static Map<String, double[]> userFactors = new HashMap<>();
     private static Map<String, double[]> genreFactors = new HashMap<>();
+
     private static Set<String> allGenres = new HashSet<>();
     private static Set<String> allUsers = new HashSet<>();
 
     public static void main(String[] args) throws Exception {
-        List<Rating> ratings = loadRatings("dataset/ratings_20MB.json");
-        saveOriginalMatrixWithNulls(ratings, "dataset/avaliacoes_iniciais_com_nulls.json");
-        initializeFactors(ratings);
+
+        long startTime = System.nanoTime();
+
+        List<Rating> ratings = loadRatings("dataset/ratings_100MB.json");
+
+        long readTime = System.nanoTime();
+        System.out.printf("lidos em: %.2f segundos%n", (readTime - startTime) / 1e9);
+
+
+
+
+        Map<String, List<String>> movieToGenresMap = new HashMap<>();
+        for (Rating r : ratings) {
+            allUsers.add(r.getUserId());
+            allGenres.addAll(r.getGenres());
+            movieToGenresMap.putIfAbsent(r.getTitle(), r.getGenres());
+        }
+
+        long sortTime = System.nanoTime();
+        System.out.printf("reorganizado em: %.2f segundos%n", (sortTime - readTime) / 1e9);
+
+
+        readTime = System.nanoTime();
+
+        initializeFactors();
+
+        long initialTime = System.nanoTime();
+        System.out.printf("initializeFactors rodou em: %.2f segundos%n", (initialTime - readTime) / 1e9);
+
+
+
+
         trainModel(ratings);
-        Map<String, Map<String, Double>> matrix = predictRatingsMatrix(ratings);
-        printRatingsMatrix(matrix, ratings);
-        savePredictedRatingsToJson(ratings, matrix, "dataset/predicted_ratings.json");
+
+        long trainingTime = System.nanoTime();
+        System.out.printf("trainingModel rodou em: %.2f segundos%n", (trainingTime - initialTime) / 1e9);
+
+
+       Map<String, Map<String, Double>> matrix = predictRatingsMatrix(ratings, movieToGenresMap);
+      //  Map<String, Map<String, Double>> matrix = predictRatingsMatrix(ratings);
+
+
+        long matrixTime = System.nanoTime();
+        System.out.printf("matrixGen rodou em: %.2f segundos%n", (matrixTime - trainingTime) / 1e9);
+
+        printRatingsMatrix(matrix, new ArrayList<>(movieToGenresMap.keySet()));
+
+
+        long printTime = System.nanoTime();
+
+        String outputDir = "output_ratings"; // Crie este diretório ou use um existente
+        new java.io.File(outputDir).mkdirs(); // Garante que o diretório exista
+
+        savePredictedRatingsToJson(matrix, allUsers, movieToGenresMap, "dataset/predicted_ratings.json");
+
+        long saveTime = System.nanoTime();
+        System.out.printf("saveJson rodou em: %.2f segundos%n", (saveTime - printTime) / 1e9);
+
+
+        long endTime = System.nanoTime();
+        System.out.printf("Tempo total: %.2f segundos%n", (endTime - startTime) / 1e9);
+
+
     }
 
     private static List<Rating> loadRatings(String filename) throws IOException {
         Gson gson = new Gson();
-        return gson.fromJson(new FileReader(filename), new TypeToken<List<Rating>>(){}.getType());
+        try (BufferedReader reader = new BufferedReader(new FileReader(filename))) {
+            return gson.fromJson(reader, new TypeToken<List<Rating>>() {}.getType());
+        }
     }
 
-    private static void initializeFactors(List<Rating> ratings) {
-        for (Rating r : ratings) {
-            allUsers.add(r.getUserId());
-            allGenres.addAll(r.getGenres());
-        }
+    private static void initializeFactors() {
         Random rand = new Random();
         for (String user : allUsers) {
             userFactors.put(user, rand.doubles(NUM_FEATURES, 0, 0.1).toArray());
@@ -84,8 +130,9 @@ public class MovieRecommenderSGD {
         for (int epoch = 0; epoch < NUM_EPOCHS; epoch++) {
             for (Rating r : ratings) {
                 String user = r.getUserId();
+                double[] userVec = userFactors.get(user);
+
                 for (String genre : r.getGenres()) {
-                    double[] userVec = userFactors.get(user);
                     double[] genreVec = genreFactors.get(genre);
                     double prediction = dot(userVec, genreVec);
                     double error = r.getRating() - prediction;
@@ -101,40 +148,61 @@ public class MovieRecommenderSGD {
         }
     }
 
-    private static Map<String, Map<String, Double>> predictRatingsMatrix(List<Rating> ratings) {
+    private static Map<String, Map<String, Double>> predictRatingsMatrix(List<MovieRecommenderSGD.Rating> ratings, Map<String, List<String>> movieToGenresMap) {
         Map<String, Map<String, Double>> matrix = new LinkedHashMap<>();
+        Map<String, Map<String, Double>> userRatedMovies = new HashMap<>();
+        for (MovieRecommenderSGD.Rating r : ratings) {
+            userRatedMovies.computeIfAbsent(r.getUserId(), k -> new HashMap<>()).put(r.getTitle(), r.getRating());
+        }
+
+        long predictionCounter = 0; // Adicionado o contador de previsões
 
         for (String user : allUsers) {
             Map<String, Double> ratingsForUser = new LinkedHashMap<>();
-            for (Rating r : ratings) {
-                if (r.getUserId().equals(user)) {
-                    ratingsForUser.put(r.getTitle(), r.getRating());
-                }
-            }
-            for (Rating r : ratings) {
-                if (!ratingsForUser.containsKey(r.getTitle())) {
+            double[] userVec = userFactors.get(user);
+            Map<String, Double> existingRatings = userRatedMovies.getOrDefault(user, Collections.emptyMap());
+
+            for (Map.Entry<String, List<String>> movieEntry : movieToGenresMap.entrySet()) {
+                String title = movieEntry.getKey();
+                if (existingRatings.containsKey(title)) {
+                    ratingsForUser.put(title, existingRatings.get(title));
+                } else {
+                    predictionCounter++;
+
+                    List<String> genres = movieEntry.getValue();
                     double predicted = 0.0;
-                    for (String genre : r.getGenres()) {
-                        predicted += dot(userFactors.get(user), genreFactors.get(genre));
+                    if (genres != null && !genres.isEmpty()) {
+                        for (String genre : genres) {
+                            predicted += dot(userVec, genreFactors.get(genre));
+                        }
+                        predicted /= genres.size();
                     }
-                    predicted /= r.getGenres().size();
-                    ratingsForUser.put(r.getTitle(), predicted);
+                    ratingsForUser.put(title, predicted);
                 }
             }
             matrix.put(user, ratingsForUser);
         }
+
+        // Imprime o total de previsões realizadas
+        System.out.println("\n--------------------------------------------------");
+        System.out.println("Total de previsões (predicts) realizadas: " + predictionCounter);
+        System.out.println("--------------------------------------------------\n");
+
         return matrix;
     }
 
-    private static void printRatingsMatrix(Map<String, Map<String, Double>> matrix, List<Rating> ratings) {
-        List<String> movies = ratings.stream().map(Rating::getTitle).distinct().collect(Collectors.toList());
-        System.out.print("Usuário\\t");
+    private static void printRatingsMatrix(Map<String, Map<String, Double>> matrix, List<String> movies) {
+        Collections.sort(movies);
+        System.out.print("Usuário\t");
         for (String movie : movies) {
             System.out.print(movie + "\t");
         }
         System.out.println();
 
-        for (String user : allUsers) {
+        List<String> sortedUsers = new ArrayList<>(allUsers);
+        Collections.sort(sortedUsers);
+
+        for (String user : sortedUsers) {
             System.out.print(user + "\t");
             Map<String, Double> userRatings = matrix.get(user);
             for (String movie : movies) {
@@ -144,34 +212,18 @@ public class MovieRecommenderSGD {
         }
     }
 
-    private static void savePredictedRatingsToJson(
-            List<Rating> ratings,
-            Map<String, Map<String, Double>> predictedMatrix,
-            String filename
-    ) {
-        List<String> allUsersOrdered = ratings.stream()
-                .map(Rating::getUserId)
-                .distinct()
-                .sorted()
-                .collect(Collectors.toList());
 
-        List<String> allTitlesOrdered = ratings.stream()
-                .map(Rating::getTitle)
-                .distinct()
-                .sorted()
-                .collect(Collectors.toList());
 
-        Map<String, List<String>> genreMap = new HashMap<>();
-        for (Rating r : ratings) {
-            genreMap.putIfAbsent(r.getTitle(), r.getGenres());
-        }
+    private static void savePredictedRatingsToJson(Map<String, Map<String, Double>> predictedMatrix, Set<String> users, Map<String, List<String>> genreMap, String filename) {
+        List<String> allUsersOrdered = new ArrayList<>(users);
+        Collections.sort(allUsersOrdered);
+        List<String> allTitlesOrdered = new ArrayList<>(genreMap.keySet());
+        Collections.sort(allTitlesOrdered);
 
         List<Map<String, Object>> output = new ArrayList<>();
-
         for (String user : allUsersOrdered) {
             Map<String, Object> userEntry = new LinkedHashMap<>();
             userEntry.put("user_id", user);
-
             List<Map<String, Object>> movieList = new ArrayList<>();
             Map<String, Double> userRatings = predictedMatrix.getOrDefault(user, Map.of());
 
@@ -180,61 +232,6 @@ public class MovieRecommenderSGD {
                 movieData.put("title", title);
                 movieData.put("genre", genreMap.getOrDefault(title, List.of()));
                 Double rating = userRatings.get(title);
-                movieData.put("rating", rating != null ? rating : "null");
-                movieList.add(movieData);
-            }
-
-            userEntry.put("movies", movieList);
-            output.add(userEntry);
-        }
-
-        try (FileWriter writer = new FileWriter(filename)) {
-            Gson gson = new GsonBuilder().setPrettyPrinting().create();
-            gson.toJson(output, writer);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private static void saveOriginalMatrixWithNulls(List<Rating> ratings, String filename) {
-        // Ordem garantida
-        List<String> allUsersOrdered = ratings.stream()
-                .map(Rating::getUserId)
-                .distinct()
-                .sorted()
-                .toList();
-
-        List<String> allTitlesOrdered = ratings.stream()
-                .map(Rating::getTitle)
-                .distinct()
-                .sorted()
-                .toList();
-
-        Map<String, List<String>> genreMap = new HashMap<>();
-        for (Rating r : ratings) {
-            genreMap.putIfAbsent(r.getTitle(), r.getGenres());
-        }
-
-        // Cria um mapa de (usuário -> mapa de filmes avaliados)
-        Map<String, Map<String, Double>> realRatingsMap = new HashMap<>();
-        for (Rating r : ratings) {
-            realRatingsMap
-                    .computeIfAbsent(r.getUserId(), k -> new HashMap<>())
-                    .put(r.getTitle(), r.getRating());
-        }
-
-        List<Map<String, Object>> output = new ArrayList<>();
-
-        for (String user : allUsersOrdered) {
-            Map<String, Object> userEntry = new LinkedHashMap<>();
-            userEntry.put("user_id", user);
-
-            List<Map<String, Object>> movieList = new ArrayList<>();
-            for (String title : allTitlesOrdered) {
-                Map<String, Object> movieData = new LinkedHashMap<>();
-                movieData.put("title", title);
-                movieData.put("genre", genreMap.getOrDefault(title, List.of()));
-                Double rating = realRatingsMap.getOrDefault(user, Map.of()).get(title);
                 movieData.put("rating", rating != null ? rating : "null");
                 movieList.add(movieData);
             }
