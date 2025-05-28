@@ -16,19 +16,19 @@ public class MovieRecommenderSGD {
     private static class Rating {
         String user_id;
         String title;
-        List<String> genre;
+        List<String> genres;
         double rating;
 
-        public Rating(String user_id, String title, List<String> genre, double rating) {
+        public Rating(String user_id, String title, List<String> genres, double rating) {
             this.user_id = user_id;
             this.title = title;
-            this.genre = genre;
+            this.genres = genres;
             this.rating = rating;
         }
 
         public String getUserId() { return user_id; }
         public String getTitle() { return title; }
-        public List<String> getGenres() { return genre; }
+        public List<String> getGenres() { return genres; }
         public double getRating() { return rating; }
     }
 
@@ -47,7 +47,7 @@ public class MovieRecommenderSGD {
 
         long startTime = System.nanoTime();
 
-        List<Rating> ratings = loadRatings("dataset/ratings_100MB.json");
+        List<Rating> ratings = loadRatings("dataset/avaliacoes50filmes.json");
 
         long readTime = System.nanoTime();
         System.out.printf("lidos em: %.2f segundos%n", (readTime - startTime) / 1e9);
@@ -87,9 +87,6 @@ public class MovieRecommenderSGD {
 
         long matrixTime = System.nanoTime();
         System.out.printf("matrixGen rodou em: %.2f segundos%n", (matrixTime - trainingTime) / 1e9);
-
-        printRatingsMatrix(matrix, new ArrayList<>(movieToGenresMap.keySet()));
-
 
         long printTime = System.nanoTime();
 
@@ -189,26 +186,6 @@ public class MovieRecommenderSGD {
         return matrix;
     }
 
-    private static void printRatingsMatrix(Map<String, Map<String, Double>> matrix, List<String> movies) {
-        Collections.sort(movies);
-        System.out.print("Usuário\t");
-        for (String movie : movies) {
-            System.out.print(movie + "\t");
-        }
-        System.out.println();
-
-        List<String> sortedUsers = new ArrayList<>(allUsers);
-        Collections.sort(sortedUsers);
-
-        for (String user : sortedUsers) {
-            System.out.print(user + "\t");
-            Map<String, Double> userRatings = matrix.get(user);
-            for (String movie : movies) {
-                System.out.printf("%.2f\t", userRatings.getOrDefault(movie, 0.0));
-            }
-            System.out.println();
-        }
-    }
 
 
 
