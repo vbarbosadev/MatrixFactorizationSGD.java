@@ -43,11 +43,13 @@ public class MovieRecommenderSGD {
     private static Set<String> allGenres = new HashSet<>();
     private static Set<String> allUsers = new HashSet<>();
 
+    @SuppressWarnings("unused")
     public static void main(String[] args) throws Exception {
 
         long startTime = System.nanoTime();
 
-        List<Rating> ratings = loadRatings("dataset/avaliacoes50filmes.json");
+       // List<Rating> ratings = loadRatings("dataset/avaliacoes_divididas/avaliacoes_parte_1.json");
+        List<Rating> ratings = loadRatings("dataset/dataset1GB_50F.json");
 
         long readTime = System.nanoTime();
         System.out.printf("lidos em: %.2f segundos%n", (readTime - startTime) / 1e9);
@@ -83,6 +85,14 @@ public class MovieRecommenderSGD {
 
 
        Map<String, Map<String, Double>> matrix = predictRatingsMatrix(ratings, movieToGenresMap);
+
+
+        ratings = null;
+
+        userFactors = null;
+        genreFactors = null;
+        allGenres = null; // 'allGenres' não é mais necessário
+
 
 
         long matrixTime = System.nanoTime();
@@ -220,6 +230,7 @@ public class MovieRecommenderSGD {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
     }
 
 
