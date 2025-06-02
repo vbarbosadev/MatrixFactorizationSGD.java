@@ -2,6 +2,7 @@ package SGD;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.stream.JsonWriter; // Novo import necessário
 import com.google.gson.reflect.TypeToken;
 
 import java.io.BufferedReader;
@@ -13,7 +14,10 @@ import java.util.stream.Collectors;
 
 public class MovieRecommenderSGD {
 
-    private static class Rating {
+
+
+
+    public static class Rating {
         String user_id;
         String title;
         List<String> genres;
@@ -48,8 +52,8 @@ public class MovieRecommenderSGD {
 
         long startTime = System.nanoTime();
 
-       // List<Rating> ratings = loadRatings("dataset/avaliacoes_divididas/avaliacoes_parte_1.json");
-        List<Rating> ratings = loadRatings("dataset/dataset1GB_50F.json");
+        //List<Rating> ratings = loadRatings("dataset/avaliacoes_divididas/avaliacoes_parte_1.json");
+        List<Rating> ratings = loadRatings("dataset/avaliacoes_completas1GB.json");
 
         long readTime = System.nanoTime();
         System.out.printf("lidos em: %.2f segundos%n", (readTime - startTime) / 1e9);
@@ -91,8 +95,7 @@ public class MovieRecommenderSGD {
 
         userFactors = null;
         genreFactors = null;
-        allGenres = null; // 'allGenres' não é mais necessário
-
+        allGenres = null;
 
 
         long matrixTime = System.nanoTime();
@@ -102,6 +105,7 @@ public class MovieRecommenderSGD {
 
         String outputDir = "output_ratings";
         new java.io.File(outputDir).mkdirs();
+
 
         savePredictedRatingsToJson(matrix, allUsers, movieToGenresMap, "dataset/predicted_ratings.json");
 
@@ -115,7 +119,7 @@ public class MovieRecommenderSGD {
 
     }
 
-    private static List<Rating> loadRatings(String filename) throws IOException {
+    public static List<Rating> loadRatings(String filename) throws IOException {
         Gson gson = new Gson();
         try (BufferedReader reader = new BufferedReader(new FileReader(filename))) {
             return gson.fromJson(reader, new TypeToken<List<Rating>>() {}.getType());
@@ -132,7 +136,7 @@ public class MovieRecommenderSGD {
         }
     }
 
-    private static void trainModel(List<Rating> ratings) {
+    public static void trainModel(List<Rating> ratings) {
         for (int epoch = 0; epoch < NUM_EPOCHS; epoch++) {
             for (Rating r : ratings) {
                 String user = r.getUserId();
@@ -154,7 +158,7 @@ public class MovieRecommenderSGD {
         }
     }
 
-    private static Map<String, Map<String, Double>> predictRatingsMatrix(List<MovieRecommenderSGD.Rating> ratings, Map<String, List<String>> movieToGenresMap) {
+    public static Map<String, Map<String, Double>> predictRatingsMatrix(List<MovieRecommenderSGD.Rating> ratings, Map<String, List<String>> movieToGenresMap) {
         Map<String, Map<String, Double>> matrix = new LinkedHashMap<>();
         Map<String, Map<String, Double>> userRatedMovies = new HashMap<>();
         for (MovieRecommenderSGD.Rating r : ratings) {
@@ -197,41 +201,62 @@ public class MovieRecommenderSGD {
     }
 
 
-
-
-    private static void savePredictedRatingsToJson(Map<String, Map<String, Double>> predictedMatrix, Set<String> users, Map<String, List<String>> genreMap, String filename) {
+    private static void savePredictedRatingsToJson(Map<String, Map<String, Double>> predictedMatrix,
+                                                   Set<String> users,
+                                                   Map<String, List<String>> genreMap,
+                                                   String filename) {
+        // Ordena os usuários e títulos para uma saída consistente
         List<String> allUsersOrdered = new ArrayList<>(users);
         Collections.sort(allUsersOrdered);
+
         List<String> allTitlesOrdered = new ArrayList<>(genreMap.keySet());
         Collections.sort(allTitlesOrdered);
 
-        List<Map<String, Object>> output = new ArrayList<>();
-        for (String user : allUsersOrdered) {
-            Map<String, Object> userEntry = new LinkedHashMap<>();
-            userEntry.put("user_id", user);
-            List<Map<String, Object>> movieList = new ArrayList<>();
-            Map<String, Double> userRatings = predictedMatrix.getOrDefault(user, Map.of());
+        try (JsonWriter writer = new JsonWriter(new FileWriter(filename))) {
+            writer.setIndent("  "); // Para "pretty printing" (formatação legível)
 
-            for (String title : allTitlesOrdered) {
-                Map<String, Object> movieData = new LinkedHashMap<>();
-                movieData.put("title", title);
-                movieData.put("genre", genreMap.getOrDefault(title, List.of()));
-                Double rating = userRatings.get(title);
-                movieData.put("rating", rating != null ? rating : "null");
-                movieList.add(movieData);
+            writer.beginArray(); // Começa o array JSON principal: [
+
+            for (String user : allUsersOrdered) {
+                writer.beginObject(); // Começa o objeto do usuário: {
+                writer.name("user_id").value(user);
+
+                writer.name("movies");
+                writer.beginArray(); // Começa a lista de filmes: [
+
+                Map<String, Double> userRatings = predictedMatrix.getOrDefault(user, Collections.emptyMap());
+
+                for (String title : allTitlesOrdered) {
+                    writer.beginObject(); // Começa o objeto do filme: {
+                    writer.name("title").value(title);
+
+                    writer.name("genre");
+                    writer.beginArray(); // Começa a lista de gêneros: [
+                    List<String> genres = genreMap.getOrDefault(title, Collections.emptyList());
+                    for (String genre : genres) {
+                        writer.value(genre);
+                    }
+                    writer.endArray(); // Termina a lista de gêneros: ]
+
+                    writer.name("rating");
+                    Double rating = userRatings.get(title);
+                    if (rating != null) {
+                        writer.value(rating); // Escreve o número
+                    } else {
+                        writer.nullValue(); // Escreve null JSON se a avaliação não existir
+                    }
+                    writer.endObject(); // Termina o objeto do filme: }
+                }
+                writer.endArray(); // Termina a lista de filmes: ]
+                writer.endObject(); // Termina o objeto do usuário: }
             }
-            userEntry.put("movies", movieList);
-            output.add(userEntry);
-        }
+            writer.endArray(); // Termina o array JSON principal: ]
 
-        try (FileWriter writer = new FileWriter(filename)) {
-            Gson gson = new GsonBuilder().setPrettyPrinting().create();
-            gson.toJson(output, writer);
         } catch (IOException e) {
             e.printStackTrace();
         }
-
     }
+
 
 
     private static double dot(double[] a, double[] b) {
