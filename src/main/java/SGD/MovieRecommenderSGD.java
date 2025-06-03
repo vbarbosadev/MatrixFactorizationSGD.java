@@ -44,6 +44,7 @@ public class MovieRecommenderSGD {
     public static Set<String> allGenres = new HashSet<>();
     public static Set<String> allUsers = new HashSet<>();
 
+
     @SuppressWarnings("unused")
     public static void main(String[] args) throws Exception {
 
@@ -131,6 +132,14 @@ public class MovieRecommenderSGD {
         for (String genre : allGenres) {
             genreFactors.put(genre, rand.doubles(NUM_FEATURES, 0, 0.1).toArray());
         }
+    }
+
+    private static double dot(double[] a, double[] b) {
+        double sum = 0.0;
+        for (int i = 0; i < a.length; i++) {
+            sum += a[i] * b[i];
+        }
+        return sum;
     }
 
     public static void trainModel(List<Rating> ratings) {
@@ -255,11 +264,5 @@ public class MovieRecommenderSGD {
 
 
 
-    private static double dot(double[] a, double[] b) {
-        double sum = 0.0;
-        for (int i = 0; i < a.length; i++) {
-            sum += a[i] * b[i];
-        }
-        return sum;
-    }
+
 }
