@@ -1,0 +1,1034 @@
+[
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "Back to the Future",
+    "genres": [
+      "adventure",
+      "comedy",
+      "sci-fi"
+    ],
+    "rating": 4.4
+  },
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "Fight Club",
+    "genres": [
+      "drama"
+    ],
+    "rating": 1.6
+  },
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "Parasite",
+    "genres": [
+      "comedy",
+      "drama",
+      "thriller"
+    ],
+    "rating": 3.6
+  },
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "The Matrix",
+    "genres": [
+      "action",
+      "sci-fi"
+    ],
+    "rating": 3.3
+  },
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "Se7en",
+    "genres": [
+      "crime",
+      "drama",
+      "mystery",
+      "thriller"
+    ],
+    "rating": 3.6
+  },
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "The Godfather",
+    "genres": [
+      "drama",
+      "crime"
+    ],
+    "rating": 2.6
+  },
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "Interstellar",
+    "genres": [
+      "adventure",
+      "drama",
+      "sci-fi"
+    ],
+    "rating": 3.4
+  },
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "Joker",
+    "genres": [
+      "crime",
+      "drama",
+      "thriller"
+    ],
+    "rating": 3.7
+  },
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "The Silence of the Lambs",
+    "genres": [
+      "crime",
+      "drama",
+      "thriller"
+    ],
+    "rating": 1.1
+  },
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "Saving Private Ryan",
+    "genres": [
+      "drama",
+      "war"
+    ],
+    "rating": 2.8
+  },
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "Jurassic Park",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 3.5
+  },
+  {
+    "user_id": "00e14298-68f4-4042-a3d9-2615e406b58d",
+    "title": "Toy Story",
+    "genres": [
+      "animation",
+      "adventure",
+      "comedy",
+      "family",
+      "fantasy"
+    ],
+    "rating": 3.5
+  },
+  {
+    "user_id": "0e1d559f-0417-4cf5-aa9c-18a5a20b978f",
+    "title": "Mad Max: Fury Road",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 2.0
+  },
+  {
+    "user_id": "0e1d559f-0417-4cf5-aa9c-18a5a20b978f",
+    "title": "The Shawshank Redemption",
+    "genres": [
+      "drama",
+      "crime"
+    ],
+    "rating": 1.5
+  },
+  {
+    "user_id": "0e1d559f-0417-4cf5-aa9c-18a5a20b978f",
+    "title": "Star Wars: A New Hope",
+    "genres": [
+      "action",
+      "adventure",
+      "fantasy",
+      "sci-fi"
+    ],
+    "rating": 1.1
+  },
+  {
+    "user_id": "0e1d559f-0417-4cf5-aa9c-18a5a20b978f",
+    "title": "Joker",
+    "genres": [
+      "crime",
+      "drama",
+      "thriller"
+    ],
+    "rating": 2.4
+  },
+  {
+    "user_id": "0e1d559f-0417-4cf5-aa9c-18a5a20b978f",
+    "title": "Gladiator",
+    "genres": [
+      "action",
+      "adventure",
+      "drama"
+    ],
+    "rating": 3.7
+  },
+  {
+    "user_id": "0e1d559f-0417-4cf5-aa9c-18a5a20b978f",
+    "title": "The Godfather",
+    "genres": [
+      "drama",
+      "crime"
+    ],
+    "rating": 2.6
+  },
+  {
+    "user_id": "0e1d559f-0417-4cf5-aa9c-18a5a20b978f",
+    "title": "Forrest Gump",
+    "genres": [
+      "drama",
+      "romance"
+    ],
+    "rating": 2.2
+  },
+  {
+    "user_id": "0e1d559f-0417-4cf5-aa9c-18a5a20b978f",
+    "title": "Back to the Future",
+    "genres": [
+      "adventure",
+      "comedy",
+      "sci-fi"
+    ],
+    "rating": 1.0
+  },
+  {
+    "user_id": "0e1d559f-0417-4cf5-aa9c-18a5a20b978f",
+    "title": "Psycho",
+    "genres": [
+      "horror",
+      "mystery",
+      "thriller"
+    ],
+    "rating": 4.6
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "Se7en",
+    "genres": [
+      "crime",
+      "drama",
+      "mystery",
+      "thriller"
+    ],
+    "rating": 2.5
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "Psycho",
+    "genres": [
+      "horror",
+      "mystery",
+      "thriller"
+    ],
+    "rating": 1.8
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "Interstellar",
+    "genres": [
+      "adventure",
+      "drama",
+      "sci-fi"
+    ],
+    "rating": 2.7
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "Gladiator",
+    "genres": [
+      "action",
+      "adventure",
+      "drama"
+    ],
+    "rating": 1.2
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "Avatar",
+    "genres": [
+      "action",
+      "adventure",
+      "fantasy",
+      "sci-fi"
+    ],
+    "rating": 3.4
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "The Lion King",
+    "genres": [
+      "animation",
+      "adventure",
+      "drama",
+      "family",
+      "musical"
+    ],
+    "rating": 2.5
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "Joker",
+    "genres": [
+      "crime",
+      "drama",
+      "thriller"
+    ],
+    "rating": 2.0
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "Fight Club",
+    "genres": [
+      "drama"
+    ],
+    "rating": 1.8
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "The Avengers",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "superhero"
+    ],
+    "rating": 1.1
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "WALL-E",
+    "genres": [
+      "animation",
+      "adventure",
+      "family",
+      "sci-fi"
+    ],
+    "rating": 1.3
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "Saving Private Ryan",
+    "genres": [
+      "drama",
+      "war"
+    ],
+    "rating": 2.2
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "Amélie",
+    "genres": [
+      "comedy",
+      "romance"
+    ],
+    "rating": 4.9
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "The Silence of the Lambs",
+    "genres": [
+      "crime",
+      "drama",
+      "thriller"
+    ],
+    "rating": 2.6
+  },
+  {
+    "user_id": "bb438504-5f26-4673-bc1a-2d3ab097f566",
+    "title": "The Dark Knight",
+    "genres": [
+      "action",
+      "crime",
+      "drama",
+      "thriller",
+      "superhero"
+    ],
+    "rating": 2.2
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "The Lion King",
+    "genres": [
+      "animation",
+      "adventure",
+      "drama",
+      "family",
+      "musical"
+    ],
+    "rating": 2.3
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "Back to the Future",
+    "genres": [
+      "adventure",
+      "comedy",
+      "sci-fi"
+    ],
+    "rating": 4.4
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "Titanic",
+    "genres": [
+      "drama",
+      "romance"
+    ],
+    "rating": 2.0
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "Django Unchained",
+    "genres": [
+      "drama",
+      "western"
+    ],
+    "rating": 3.3
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "Star Wars: A New Hope",
+    "genres": [
+      "action",
+      "adventure",
+      "fantasy",
+      "sci-fi"
+    ],
+    "rating": 3.9
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "The Shawshank Redemption",
+    "genres": [
+      "drama",
+      "crime"
+    ],
+    "rating": 2.3
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "Fight Club",
+    "genres": [
+      "drama"
+    ],
+    "rating": 3.9
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "The Lord of the Rings: The Return of the King",
+    "genres": [
+      "action",
+      "adventure",
+      "drama",
+      "fantasy"
+    ],
+    "rating": 2.2
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "Psycho",
+    "genres": [
+      "horror",
+      "mystery",
+      "thriller"
+    ],
+    "rating": 3.9
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "Inception",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 4.6
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "Avatar",
+    "genres": [
+      "action",
+      "adventure",
+      "fantasy",
+      "sci-fi"
+    ],
+    "rating": 2.1
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "Spirited Away",
+    "genres": [
+      "animation",
+      "adventure",
+      "family",
+      "fantasy"
+    ],
+    "rating": 4.4
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "The Dark Knight",
+    "genres": [
+      "action",
+      "crime",
+      "drama",
+      "thriller",
+      "superhero"
+    ],
+    "rating": 4.8
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "Jurassic Park",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 4.7
+  },
+  {
+    "user_id": "55eeba8e-8502-40f9-b6d4-b3a28571b9cf",
+    "title": "Gladiator",
+    "genres": [
+      "action",
+      "adventure",
+      "drama"
+    ],
+    "rating": 2.0
+  },
+  {
+    "user_id": "92b03af8-58ae-4f01-ac02-c3a0f33b9a38",
+    "title": "Avatar",
+    "genres": [
+      "action",
+      "adventure",
+      "fantasy",
+      "sci-fi"
+    ],
+    "rating": 2.6
+  },
+  {
+    "user_id": "92b03af8-58ae-4f01-ac02-c3a0f33b9a38",
+    "title": "The Silence of the Lambs",
+    "genres": [
+      "crime",
+      "drama",
+      "thriller"
+    ],
+    "rating": 3.9
+  },
+  {
+    "user_id": "92b03af8-58ae-4f01-ac02-c3a0f33b9a38",
+    "title": "Psycho",
+    "genres": [
+      "horror",
+      "mystery",
+      "thriller"
+    ],
+    "rating": 4.5
+  },
+  {
+    "user_id": "92b03af8-58ae-4f01-ac02-c3a0f33b9a38",
+    "title": "Back to the Future",
+    "genres": [
+      "adventure",
+      "comedy",
+      "sci-fi"
+    ],
+    "rating": 4.8
+  },
+  {
+    "user_id": "92b03af8-58ae-4f01-ac02-c3a0f33b9a38",
+    "title": "WALL-E",
+    "genres": [
+      "animation",
+      "adventure",
+      "family",
+      "sci-fi"
+    ],
+    "rating": 1.6
+  },
+  {
+    "user_id": "92b03af8-58ae-4f01-ac02-c3a0f33b9a38",
+    "title": "Saving Private Ryan",
+    "genres": [
+      "drama",
+      "war"
+    ],
+    "rating": 2.8
+  },
+  {
+    "user_id": "92b03af8-58ae-4f01-ac02-c3a0f33b9a38",
+    "title": "Parasite",
+    "genres": [
+      "comedy",
+      "drama",
+      "thriller"
+    ],
+    "rating": 1.7
+  },
+  {
+    "user_id": "92b03af8-58ae-4f01-ac02-c3a0f33b9a38",
+    "title": "Jurassic Park",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 4.0
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "The Shawshank Redemption",
+    "genres": [
+      "drama",
+      "crime"
+    ],
+    "rating": 1.9
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "The Lion King",
+    "genres": [
+      "animation",
+      "adventure",
+      "drama",
+      "family",
+      "musical"
+    ],
+    "rating": 3.7
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "Inception",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 1.4
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "Amélie",
+    "genres": [
+      "comedy",
+      "romance"
+    ],
+    "rating": 2.3
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "Mad Max: Fury Road",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 2.9
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "Back to the Future",
+    "genres": [
+      "adventure",
+      "comedy",
+      "sci-fi"
+    ],
+    "rating": 1.8
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "The Lord of the Rings: The Return of the King",
+    "genres": [
+      "action",
+      "adventure",
+      "drama",
+      "fantasy"
+    ],
+    "rating": 4.5
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "Saving Private Ryan",
+    "genres": [
+      "drama",
+      "war"
+    ],
+    "rating": 4.5
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "Pulp Fiction",
+    "genres": [
+      "crime",
+      "drama"
+    ],
+    "rating": 3.8
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "Star Wars: A New Hope",
+    "genres": [
+      "action",
+      "adventure",
+      "fantasy",
+      "sci-fi"
+    ],
+    "rating": 3.2
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "Forrest Gump",
+    "genres": [
+      "drama",
+      "romance"
+    ],
+    "rating": 2.7
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "The Avengers",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "superhero"
+    ],
+    "rating": 4.2
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "Psycho",
+    "genres": [
+      "horror",
+      "mystery",
+      "thriller"
+    ],
+    "rating": 4.6
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "Avatar",
+    "genres": [
+      "action",
+      "adventure",
+      "fantasy",
+      "sci-fi"
+    ],
+    "rating": 3.3
+  },
+  {
+    "user_id": "ee287350-7b7c-45cc-84b4-36c12cd76813",
+    "title": "Parasite",
+    "genres": [
+      "comedy",
+      "drama",
+      "thriller"
+    ],
+    "rating": 3.2
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "Fight Club",
+    "genres": [
+      "drama"
+    ],
+    "rating": 4.2
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "Forrest Gump",
+    "genres": [
+      "drama",
+      "romance"
+    ],
+    "rating": 3.9
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "Amélie",
+    "genres": [
+      "comedy",
+      "romance"
+    ],
+    "rating": 1.3
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "The Godfather",
+    "genres": [
+      "drama",
+      "crime"
+    ],
+    "rating": 4.1
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "Interstellar",
+    "genres": [
+      "adventure",
+      "drama",
+      "sci-fi"
+    ],
+    "rating": 2.5
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "Inception",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 3.7
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "The Dark Knight",
+    "genres": [
+      "action",
+      "crime",
+      "drama",
+      "thriller",
+      "superhero"
+    ],
+    "rating": 2.6
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "Parasite",
+    "genres": [
+      "comedy",
+      "drama",
+      "thriller"
+    ],
+    "rating": 3.8
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "The Silence of the Lambs",
+    "genres": [
+      "crime",
+      "drama",
+      "thriller"
+    ],
+    "rating": 4.9
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "The Lord of the Rings: The Return of the King",
+    "genres": [
+      "action",
+      "adventure",
+      "drama",
+      "fantasy"
+    ],
+    "rating": 1.4
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "Back to the Future",
+    "genres": [
+      "adventure",
+      "comedy",
+      "sci-fi"
+    ],
+    "rating": 2.1
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "Se7en",
+    "genres": [
+      "crime",
+      "drama",
+      "mystery",
+      "thriller"
+    ],
+    "rating": 1.7
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "Jurassic Park",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 1.4
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "The Lion King",
+    "genres": [
+      "animation",
+      "adventure",
+      "drama",
+      "family",
+      "musical"
+    ],
+    "rating": 3.3
+  },
+  {
+    "user_id": "f25aa5f4-0e79-4557-97a1-b7a7dfeb11ad",
+    "title": "Pulp Fiction",
+    "genres": [
+      "crime",
+      "drama"
+    ],
+    "rating": 2.4
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "Avatar",
+    "genres": [
+      "action",
+      "adventure",
+      "fantasy",
+      "sci-fi"
+    ],
+    "rating": 3.6
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "Back to the Future",
+    "genres": [
+      "adventure",
+      "comedy",
+      "sci-fi"
+    ],
+    "rating": 2.3
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "Inception",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 1.6
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "Mad Max: Fury Road",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 1.7
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "WALL-E",
+    "genres": [
+      "animation",
+      "adventure",
+      "family",
+      "sci-fi"
+    ],
+    "rating": 3.6
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "Django Unchained",
+    "genres": [
+      "drama",
+      "western"
+    ],
+    "rating": 3.4
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "Joker",
+    "genres": [
+      "crime",
+      "drama",
+      "thriller"
+    ],
+    "rating": 4.1
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "The Silence of the Lambs",
+    "genres": [
+      "crime",
+      "drama",
+      "thriller"
+    ],
+    "rating": 2.1
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "The Lord of the Rings: The Return of the King",
+    "genres": [
+      "action",
+      "adventure",
+      "drama",
+      "fantasy"
+    ],
+    "rating": 1.9
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "Psycho",
+    "genres": [
+      "horror",
+      "mystery",
+      "thriller"
+    ],
+    "rating": 3.6
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "Jurassic Park",
+    "genres": [
+      "action",
+      "adventure",
+      "sci-fi",
+      "thriller"
+    ],
+    "rating": 1.6
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "The Dark Knight",
+    "genres": [
+      "action",
+      "crime",
+      "drama",
+      "thriller",
+      "superhero"
+    ],
+    "rating": 3.4
+  },
+  {
+    "user_id": "e4d271ee-9ecb-45bd-adf8-df83bef53b59",
+    "title": "Star Wars: A New Hope",
+    "genres": [
+      "action",
+      "adventure",
+      "fantasy",
+      "sci-fi"
+    ],
+    "rating": 3.7
+  }
+  ]
