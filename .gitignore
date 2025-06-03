@@ -25,11 +25,12 @@ jcstress*
 target/
 
 #dataset
-dataset/
+dataset/*
 output_ratings/
 output_ratings_synchronized/
 output_ratingsLock/
 results/
+*.jfr
 ideias/
 src/test/*
 
