@@ -26,8 +26,7 @@ public class MovieRecommenderSGD {
         String user_id;
         String title;
 
-        @SerializedName(value = "genres", alternate = "genre")
-        List<String> genre;
+        List<String> genres;
 
 
         double rating;
@@ -35,7 +34,7 @@ public class MovieRecommenderSGD {
         public Rating(String user_id, String title, List<String> genre, double rating) {
             this.user_id = user_id;
             this.title = title;
-            this.genre = genre;
+            this.genres = genre;
             this.rating = rating;
         }
 
@@ -48,7 +47,7 @@ public class MovieRecommenderSGD {
         }
 
         public List<String> getGenres() {
-            return genre;
+            return genres;
         }
 
         public double getRating() {
@@ -147,7 +146,7 @@ public class MovieRecommenderSGD {
         }
         */
 
-        arquivos = Set.of("dataset/avaliacoes_completas50MB.json");
+        arquivos = Set.of("dataset/avaliacoes_completas1GB.json");
 
 
         long startTime = System.nanoTime();
@@ -165,6 +164,13 @@ public class MovieRecommenderSGD {
             // Mensagem já dada acima, mas podemos reforçar.
             System.err.println("Nenhum rating para processar.");
             return;
+        }
+
+        Map<String, List<String>> movieToGenresMap = new HashMap<>();
+        for (Rating r : ratings) {
+            allUsers.add(r.getUserId());
+            allGenres.addAll(r.getGenres());
+            movieToGenresMap.putIfAbsent(r.getTitle(), r.getGenres());
         }
 
         //saveOriginalMatrixWithNulls(ratings, "dataset/avaliacoes_iniciais_com_nulls.json");
@@ -193,13 +199,17 @@ public class MovieRecommenderSGD {
         long printTime = System.nanoTime();
         //  System.out.printf("printMatrix rodou em: %.2f segundos%n", (printTime - matrixTime) / 1e9);
 
-        // --- Chamada da Função Modificada ---
-        String outputDir = "output_ratings"; // Crie este diretório ou use um existente
-        new java.io.File(outputDir).mkdirs(); // Garante que o diretório exista
-        String baseFilename = "predicted_user_ratings";
+
+        String baseFilename = "predicted_user_ratings.json";
+
+        ratings = null;
+
+        userFactors = null;
+        genreFactors = null;
+        allGenres = null;
 
 
-        savePredictedRatingsToJson(ratings, matrix, outputDir, baseFilename);
+        savePredictedRatingsToJson(matrix, allUsers, movieToGenresMap, baseFilename);
 
 
         long saveTime = System.nanoTime();
@@ -335,161 +345,60 @@ public class MovieRecommenderSGD {
         return matrix;
     }
 
+    public static void savePredictedRatingsToJson(Map<String, Map<String, Double>> predictedMatrix,
+                                                  Set<String> users,
+                                                  Map<String, List<String>> genreMap,
+                                                  String filename) {
+        List<String> allUsersOrdered = new ArrayList<>(users);
+        Collections.sort(allUsersOrdered);
 
-    private static void savePredictedRatingsToJson(
-            ConcurrentLinkedQueue<Rating> ratings, // Fila de avaliações original
-            Map<String, Map<String, Double>> predictedMatrix, // Matriz de predições
-            String outputDirectory, // Diretório de saída
-            String baseFilename // Nome base para os arquivos de saída
-    ) {
-        // 1. Obter listas ordenadas de todos os usuários e títulos
-        List<String> allUsersOrdered = ratings.stream()
-                .map(Rating::getUserId)
-                .distinct()
-                .sorted()
-                .collect(Collectors.toList());
+        List<String> allTitlesOrdered = new ArrayList<>(genreMap.keySet());
+        Collections.sort(allTitlesOrdered);
 
-        // Se a lista de ratings estiver vazia, mas a predictedMatrix não, tenta obter usuários da matriz
-        if (allUsersOrdered.isEmpty() && !predictedMatrix.isEmpty()) {
-            allUsersOrdered.addAll(predictedMatrix.keySet());
-            Collections.sort(allUsersOrdered); // Garante a ordem
-        }
+        try (JsonWriter writer = new JsonWriter(new FileWriter(filename))) {
+            writer.setIndent("  ");
 
-        List<String> allTitlesOrdered = ratings.stream()
-                .map(Rating::getTitle)
-                .distinct()
-                .sorted()
-                .collect(Collectors.toList());
+            writer.beginArray();
 
-        // Se a lista de ratings estiver vazia, mas a predictedMatrix não, tenta obter títulos da matriz
-        if (allTitlesOrdered.isEmpty() && !predictedMatrix.isEmpty()) {
-            Set<String> titlesSet = new HashSet<>();
-            predictedMatrix.values().forEach(userMap -> titlesSet.addAll(userMap.keySet()));
-            allTitlesOrdered.addAll(titlesSet);
-            Collections.sort(allTitlesOrdered); // Garante a ordem
-        }
+            for (String user : allUsersOrdered) {
+                writer.beginObject();
+                writer.name("user_id").value(user);
 
-        // 2. Criar um mapa de títulos para gêneros
-        // Usar ConcurrentHashMap é seguro, mas como é preenchido sequencialmente antes das threads,
-        // um HashMap normal também funcionaria se não modificado depois.
-        Map<String, List<String>> genreMap = new ConcurrentHashMap<>();
-        if (ratings != null) { // Adiciona verificação de nulo para 'ratings'
-            for (Rating r : ratings) {
-                if (r != null && r.getTitle() != null && r.getGenres() != null) { // Verifica r, título e gêneros
-                    genreMap.putIfAbsent(r.getTitle(), r.getGenres());
-                }
-            }
-        }
+                writer.name("movies");
+                writer.beginArray();
 
+                Map<String, Double> userRatings = predictedMatrix.getOrDefault(user, Collections.emptyMap());
 
-        // Gson ainda pode ser útil para configurar o JsonWriter ou para outras tarefas, mas não para toJson em si.
-        // Gson gson = new GsonBuilder().setPrettyPrinting().create(); // Não é mais usado para a serialização principal
+                for (String title : allTitlesOrdered) {
+                    writer.beginObject();
+                    writer.name("title").value(title);
 
-        List<Future<?>> futures = new ArrayList<>();
-
-        // Lógica para dividir usuários em arquivos
-        int usersPerFileTarget = 15; // Seu valor original, interpretado como "objetivo de arquivos"
-        int usersPerFile = allUsersOrdered.isEmpty() ? 1 : (int) Math.ceil((double) allUsersOrdered.size() / usersPerFileTarget);
-        if (usersPerFile == 0 && !allUsersOrdered.isEmpty()) usersPerFile = 1; // Garante pelo menos 1 se houver usuários
-
-        System.out.printf("Iniciando salvamento de %d usuários em blocos de aproximadamente %d usuários por arquivo (total %d arquivos).%n",
-                allUsersOrdered.size(),
-                usersPerFile,
-                allUsersOrdered.isEmpty() ? 0 : (int) Math.ceil((double) allUsersOrdered.size() / usersPerFile));
-
-        try (ExecutorService virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
-            int filePart = 0;
-            if (allUsersOrdered.isEmpty()) {
-                System.out.println("Nenhum usuário para salvar.");
-            }
-
-            for (int i = 0; i < allUsersOrdered.size(); i += usersPerFile) {
-                filePart++;
-                int end = Math.min(i + usersPerFile, allUsersOrdered.size());
-                List<String> userChunk = allUsersOrdered.subList(i, end); // Sublista para o chunk atual
-
-                // Nome final do arquivo para este chunk
-                String chunkFilename = String.format("%s_part_%d.json", baseFilename, filePart);
-                String fullPath = outputDirectory + (outputDirectory.endsWith("/") ? "" : "/") + chunkFilename;
-
-                // Copia o chunk de usuários para garantir que seja efetivamente final para o lambda
-                final List<String> currentUserChunk = new ArrayList<>(userChunk);
-                final Map<String, Map<String, Double>> finalPredictedMatrix = predictedMatrix;
-                final List<String> finalAllTitlesOrdered = allTitlesOrdered;
-                final Map<String, List<String>> finalGenreMap = genreMap;
-                final String finalChunkFilename = chunkFilename; // Para mensagem de erro
-
-                Future<?> future = virtualThreadExecutor.submit(() -> {
-                    // NÃO construir List<Map<String, Object>> usersOutputForChunk em memória
-                    // Em vez disso, usar JsonWriter para streaming direto para o arquivo.
-                    try (JsonWriter jsonWriter = new JsonWriter(new FileWriter(fullPath))) {
-                        jsonWriter.setIndent("  "); // Para "pretty printing"
-
-                        jsonWriter.beginArray(); // Cada arquivo de chunk será um array de usuários
-
-                        for (String user : currentUserChunk) {
-                            jsonWriter.beginObject(); // Inicia objeto do usuário: {
-                            jsonWriter.name("user_id").value(user);
-
-                            jsonWriter.name("movies");
-                            jsonWriter.beginArray(); // Inicia lista de filmes para este usuário: [
-
-                            Map<String, Double> userRatings = finalPredictedMatrix.getOrDefault(user, Collections.emptyMap());
-
-                            for (String title : finalAllTitlesOrdered) {
-                                jsonWriter.beginObject(); // Inicia dados do filme: {
-                                jsonWriter.name("title").value(title);
-
-                                jsonWriter.name("genre");
-                                jsonWriter.beginArray(); // Inicia lista de gêneros para este filme: [
-                                List<String> genres = finalGenreMap.getOrDefault(title, Collections.emptyList());
-                                for (String genre : genres) {
-                                    jsonWriter.value(genre);
-                                }
-                                jsonWriter.endArray(); // Finaliza lista de gêneros: ]
-
-                                jsonWriter.name("rating");
-                                Double rating = userRatings.get(title);
-                                if (rating != null) {
-                                    jsonWriter.value(rating); // Escreve o número de avaliação
-                                } else {
-                                    jsonWriter.nullValue(); // Escreve null JSON se a avaliação não existir
-                                }
-                                jsonWriter.endObject(); // Finaliza dados do filme: }
-                            }
-                            jsonWriter.endArray(); // Finaliza lista de filmes para este usuário: ]
-                            jsonWriter.endObject(); // Finaliza objeto do usuário: }
-                        }
-                        jsonWriter.endArray(); // Finaliza o array de usuários para este arquivo de chunk: ]
-
-                    } catch (IOException e) {
-                        System.err.println("Erro ao escrever arquivo " + finalChunkFilename + ": " + e.getMessage());
-                        // Você pode querer lançar uma RuntimeException aqui ou usar um manipulador de exceção mais robusto
-                        // e.printStackTrace(); // Para depuração
+                    writer.name("genre");
+                    writer.beginArray();
+                    List<String> genres = genreMap.getOrDefault(title, Collections.emptyList());
+                    for (String genre : genres) {
+                        writer.value(genre);
                     }
-                });
-                futures.add(future);
-            }
+                    writer.endArray();
 
-            // Aguarda a conclusão de todas as tarefas de salvamento
-            for (Future<?> f : futures) {
-                try {
-                    f.get(); // Espera a conclusão e obtém exceções, se houver
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt(); // Restaura o status de interrupção
-                    System.err.println("Thread principal interrompida enquanto aguardava o salvamento dos arquivos.");
-                } catch (ExecutionException e) {
-                    System.err.println("Erro na execução do salvamento de arquivo: " +
-                            (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()));
-                    // e.printStackTrace(); // Para depuração da causa raiz
+                    writer.name("rating");
+                    Double rating = userRatings.get(title);
+                    if (rating != null) {
+                        writer.value(rating);
+                    } else {
+                        writer.nullValue();
+                    }
+                    writer.endObject();
                 }
+                writer.endArray();
+                writer.endObject();
             }
-        } // O ExecutorService é fechado automaticamente aqui (try-with-resources)
+            writer.endArray();
 
-        System.out.println("Processo de salvamento em múltiplos arquivos concluído.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
-
-
 
 
     private static double dot(double[] a, double[] b) {
