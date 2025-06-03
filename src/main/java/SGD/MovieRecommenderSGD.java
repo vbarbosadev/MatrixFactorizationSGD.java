@@ -417,7 +417,7 @@ public class MovieRecommenderSGD {
     public static void main(String[] args) throws Exception {
         long startTime = System.nanoTime();
 
-        Set<String> arquivos = Set.of("dataset/avaliacoes50Filmes.json");
+        Set<String> arquivos = Set.of("dataset/avaliacoes_completas1GB.json");
 
         ConcurrentLinkedQueue<Rating> ratings = loadRatingsParallel(arquivos);
 
@@ -438,6 +438,11 @@ public class MovieRecommenderSGD {
 
 
         ConcurrentMap<String, Map<String, Double>> matrix = predictRatingsMatrix(ratings);
+
+        userFactors = null;
+        genreFactors = null;
+        allGenres = null;
+        allUsers =  null;
 
         long matrixTime = System.nanoTime();
         System.out.printf("matrixGen rodou em: %.2f segundos%n", (matrixTime - trainingTime) / 1e9);
