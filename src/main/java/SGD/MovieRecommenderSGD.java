@@ -69,7 +69,7 @@ public class MovieRecommenderSGD {
                 try {
                     f.get();
                 } catch (InterruptedException | ExecutionException e) {
-                    // Tratar exceções
+                    System.err.println("Erro ao coletar o valor de Future: " + e);
                 }
             }
         }
