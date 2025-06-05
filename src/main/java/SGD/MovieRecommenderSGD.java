@@ -85,7 +85,7 @@ public class MovieRecommenderSGD {
 
             for (Future<?> f : futures) {
                 try {
-                    f.get(); // Aguarda a conclusão de cada tarefa
+                    f.get();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     System.err.println("Carregamento de ratings interrompido.");
@@ -107,7 +107,7 @@ public class MovieRecommenderSGD {
         allUsers = ConcurrentHashMap.newKeySet();
         allGenres = ConcurrentHashMap.newKeySet();
 
-        // Etapa 1: Popular allUsers e allGenres
+       
         ExecutorService executor1 = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
         for (Rating r : ratings) {
@@ -120,7 +120,7 @@ public class MovieRecommenderSGD {
         executor1.shutdown();
         executor1.awaitTermination(1, TimeUnit.MINUTES);
 
-        // Etapa 2: Inicializar userFactors e genreFactors
+       
         ExecutorService executor2 = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
         for (String user : allUsers) {
@@ -146,7 +146,7 @@ public class MovieRecommenderSGD {
     }
 
     public static void trainModel(ConcurrentLinkedQueue<Rating> ratings) {
-        System.out.println("Iniciando Treinamento (pronto para sincronização futura)");
+        System.out.println("Iniciando Treinamento");
 
         List<Rating> ratingList = new ArrayList<>(ratings);
 
@@ -161,9 +161,7 @@ public class MovieRecommenderSGD {
                     double prediction = dot(userVec, genreVec);
                     double error = rating.getRating() - prediction;
 
-                    // ⛔ Se quiser sincronizar depois:
-                    // synchronized (getUserLock(user)) { ... }
-                    // synchronized (getGenreLock(genre)) { ... }
+                    
                     updateVectors(userVec, genreVec, error);
                 }
             });
@@ -252,47 +250,7 @@ public class MovieRecommenderSGD {
         return matrix;
 
     }
-
-
-    private static void printRatingsMatrix(ConcurrentMap<String, Map<String, Double>> matrix,
-                                           ConcurrentLinkedQueue<Rating> ratings) throws InterruptedException {
-        List<String> movies = ratings.stream()
-                .map(Rating::getTitle)
-                .distinct()
-                .collect(Collectors.toList());
-
-        System.out.print("Usuário\t");
-        for (String movie : movies) {
-            System.out.print(movie + "\t");
-        }
-        System.out.println();
-
-        ExecutorService executor = Executors.newFixedThreadPool(
-                Math.max(2, Runtime.getRuntime().availableProcessors()), Thread.ofPlatform().factory());
-
-        ConcurrentLinkedQueue<String> outputLines = new ConcurrentLinkedQueue<>();
-        List<Callable<Void>> tasks = new ArrayList<>();
-
-        for (String user : allUsers) {
-            tasks.add(() -> {
-                StringBuilder sb = new StringBuilder();
-                sb.append(user).append("\t");
-
-                Map<String, Double> userRatings = matrix.getOrDefault(user, Map.of());
-                for (String movie : movies) {
-                    sb.append(String.format("%.2f\t", userRatings.getOrDefault(movie, 0.0)));
-                }
-
-                outputLines.add(sb.toString());
-                return null;
-            });
-        }
-
-        executor.invokeAll(tasks);
-        executor.shutdown();
-
-        outputLines.forEach(System.out::println);
-    }
+ 
 
 
     private static void savePredictedRatingsToMultipleFiles(
