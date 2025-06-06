@@ -15,7 +15,6 @@ import org.jetbrains.annotations.NotNull;
 public class MovieRecommenderSGD {
 
 
-    // Definição da classe Rating (necessária para o contexto)
     private static class Rating {
         String user_id;
         String title;
@@ -97,7 +96,6 @@ public class MovieRecommenderSGD {
         return ratings;
     }
 
-    // Sobrecarga para um único arquivo
     public static ConcurrentLinkedQueue<Rating> loadRatingsParallel(String filename) {
         return loadRatingsParallel(Set.of(filename));
     }
@@ -236,7 +234,6 @@ public class MovieRecommenderSGD {
                         }
                     }
                     matrix.put(user, userRatings);
-                    //predicts.getAndIncrement();
                 }
                 return null;
             });
@@ -322,7 +319,6 @@ public class MovieRecommenderSGD {
                         for (String title : allTitlesOrdered) {
                             Map<String, Object> movieData = new LinkedHashMap<>();
                             movieData.put("title", title);
-                            // genreMap já contém a lista correta de gêneros
                             movieData.put("genre", genreMap.getOrDefault(title, List.of()));
                             Double rating = userRatings.get(title);
                             movieData.put("rating", rating != null ? rating : "null");
@@ -382,7 +378,6 @@ public class MovieRecommenderSGD {
         long readTime = System.nanoTime();
         System.out.printf("lidos em: %.2f segundos%n", (readTime - startTime) / 1e9);
 
-        //saveOriginalMatrixWithNulls(ratings, "dataset/avaliacoes_iniciais_com_nulls.json");
         initializeFactors(ratings);
 
         long initialTime = System.nanoTime();
@@ -405,17 +400,11 @@ public class MovieRecommenderSGD {
         long matrixTime = System.nanoTime();
         System.out.printf("matrixGen rodou em: %.2f segundos%n", (matrixTime - trainingTime) / 1e9);
 
-
-        //printRatingsMatrix(matrix, ratings);
-
         long printTime = System.nanoTime();
-        //  System.out.printf("printMatrix rodou em: %.2f segundos%n", (printTime - matrixTime) / 1e9);
 
-        // --- Chamada da Função Modificada ---
-        String outputDir = "output_ratings"; // Crie este diretório ou use um existente
-        new java.io.File(outputDir).mkdirs(); // Garante que o diretório exista
+        String outputDir = "output_ratings"; 
+        new java.io.File(outputDir).mkdirs(); 
         String baseFilename = "predicted_user_ratings";
-
 
         savePredictedRatingsToMultipleFiles(ratings, matrix, outputDir, baseFilename);
 
