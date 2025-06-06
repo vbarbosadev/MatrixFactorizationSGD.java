@@ -14,7 +14,7 @@ import java.util.stream.Stream;
 
 import com.google.gson.*;
 import com.google.gson.annotations.SerializedName;
-import com.google.gson.stream.JsonWriter; // Import necessário
+import com.google.gson.stream.JsonWriter;
 
 import com.google.gson.reflect.TypeToken;
 import org.jetbrains.annotations.NotNull;
@@ -55,8 +55,6 @@ public class MovieRecommenderSGD {
         }
     }
 
-
-    // Classe RatingLoader (NÃO PRECISA DE MUDANÇAS AQUI, pois usa a definição de Rating)
     private static class RatingLoader {
         private static final Gson gson = new Gson();
         private static final Type ratingListType = new TypeToken<List<Rating>>() {}.getType();
@@ -116,10 +114,10 @@ public class MovieRecommenderSGD {
         System.out.println("Lendo arquivos da pasta: " + caminhoDaPasta);
         try (Stream<Path> streamDePaths = Files.list(Paths.get(caminhoDaPasta))) {
             Set<String> arquivosEncontrados = streamDePaths
-                    .filter(Files::isRegularFile) // Garante que estamos pegando apenas arquivos
+                    .filter(Files::isRegularFile) 
                     .peek(path -> System.out.println("Encontrado arquivo: " + path.toString())) // Opcional: para logar os arquivos encontrados
-                    .map(Path::toString)          // Converte o Path para String
-                    .collect(Collectors.toSet()); // Coleta os resultados em um Set
+                    .map(Path::toString)          
+                    .collect(Collectors.toSet());
             if (arquivosEncontrados.isEmpty()) {
                 System.out.println("Nenhum arquivo encontrado na pasta: " + caminhoDaPasta);
             }
@@ -129,9 +127,10 @@ public class MovieRecommenderSGD {
 
 
     public static void main(String[] args) throws Exception {
-        // Substitua a linha original pela chamada da função
         Set<String> arquivos;
         /*
+
+        // caso queira usar uma pasta de arquivos, descomente esta parte
         String pastaDeDatasets = "dataset/avaliacao_individual"; // Defina o nome da sua pasta aqui
         try {
             arquivos = carregarArquivosDaPasta(pastaDeDatasets);
@@ -146,6 +145,8 @@ public class MovieRecommenderSGD {
         }
         */
 
+        
+        // caso queira usar uma pasta de arquivos, comente esta parte
         arquivos = Set.of("dataset/avaliacoes_completas1GB.json");
 
 
@@ -156,7 +157,6 @@ public class MovieRecommenderSGD {
         long readTime = System.nanoTime();
         System.out.printf("lidos em: %.2f segundos%n", (readTime - startTime) / 1e9);
 
-        // Certifique-se de que 'ratings' não está vazio antes de prosseguir
         if (ratings.isEmpty() && !arquivos.isEmpty()) {
             System.err.println("Apesar dos arquivos serem listados, nenhum rating foi carregado. Verifique o formato dos arquivos e a lógica de RatingLoader.loadRatingsParallel.");
             return;
@@ -173,7 +173,6 @@ public class MovieRecommenderSGD {
             movieToGenresMap.putIfAbsent(r.getTitle(), r.getGenres());
         }
 
-        //saveOriginalMatrixWithNulls(ratings, "dataset/avaliacoes_iniciais_com_nulls.json");
         initializeFactors(ratings);
 
         long initialTime = System.nanoTime();
@@ -193,12 +192,7 @@ public class MovieRecommenderSGD {
         long matrixTime = System.nanoTime();
         System.out.printf("matrixGen rodou em: %.2f segundos%n", (matrixTime - trainingTime) / 1e9);
 
-
-        //printRatingsMatrix(matrix, ratings);
-
         long printTime = System.nanoTime();
-        //  System.out.printf("printMatrix rodou em: %.2f segundos%n", (printTime - matrixTime) / 1e9);
-
 
         String baseFilename = "predicted_user_ratings.json";
 
@@ -208,9 +202,7 @@ public class MovieRecommenderSGD {
         genreFactors = null;
         allGenres = null;
 
-
         savePredictedRatingsToJson(matrix, allUsers, movieToGenresMap, baseFilename);
-
 
         long saveTime = System.nanoTime();
         System.out.printf("saveJson rodou em: %.2f segundos%n", (saveTime - printTime) / 1e9);
@@ -228,7 +220,6 @@ public class MovieRecommenderSGD {
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 
-            // Popular allUsers e allGenres em paralelo
             for (Rating r : ratings) {
                 executor.submit(() -> {
                     allUsers.add(r.getUserId());
@@ -237,10 +228,8 @@ public class MovieRecommenderSGD {
             }
 
             executor.shutdown();
-            executor.awaitTermination(1, TimeUnit.MINUTES);
         }
 
-        // Inicializar userFactors e genreFactors em paralelo, usando ThreadLocalRandom
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 
             for (String user : allUsers) {
@@ -262,7 +251,6 @@ public class MovieRecommenderSGD {
             }
 
             executor.shutdown();
-            executor.awaitTermination(1, TimeUnit.MINUTES);
         }
     }
 
@@ -291,7 +279,6 @@ public class MovieRecommenderSGD {
                     });
                 }
                 executor.shutdown();
-                executor.awaitTermination(5, TimeUnit.MINUTES);
             }
         }
     }
