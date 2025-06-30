@@ -25,24 +25,22 @@ public class MovieRecommenderSGD {
     private static class Rating {
         String user_id;
         String title;
-        // O nome do campo foi alterado de 'genre' para 'genres'
-        // para corresponder ao JSON de entrada.
-        List<String> genres; // <<--- MODIFICADO AQUI
+
+        List<String> genres;
         double rating;
 
-        public Rating(String user_id, String title, List<String> genres, double rating) { // <<--- MODIFICADO AQUI (parâmetro)
+        public Rating(String user_id, String title, List<String> genres, double rating) { 
             this.user_id = user_id;
             this.title = title;
-            this.genres = genres; // <<--- MODIFICADO AQUI (atribuição)
+            this.genres = genres;
             this.rating = rating;
         }
 
         public String getUserId() { return user_id; }
         public String getTitle() { return title; }
 
-        // O getter já estava nomeado corretamente como getGenres(),
-        // agora ele retorna o campo 'genres' correto.
-        public List<String> getGenres() { return genres; } // <<--- Retorna o campo 'genres'
+
+        public List<String> getGenres() { return genres; }
         public double getRating() { return rating; }
     }
 
@@ -142,61 +140,76 @@ public class MovieRecommenderSGD {
         System.out.println("Iniciando Treinamento");
         List<Rating> ratingList = new ArrayList<>(ratings);
 
+        int numThreads = Runtime.getRuntime().availableProcessors();
+        ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+
+        int chunkSize = (int) Math.ceil((double) ratingList.size() / (numThreads * 4));
+        if (chunkSize == 0 && !ratingList.isEmpty()) {
+            chunkSize = 1;
+        }
+
         for (int epoch = 0; epoch < NUM_EPOCHS; epoch++) {
-            ratingList.parallelStream().forEach(rating -> {
-                String user = rating.getUserId();
-                double[] userVec = userFactors.get(user);
-                ReentrantLock uLock = userLocks.get(user);
+            List<Callable<Void>> tasks = new ArrayList<>();
+            for (int i = 0; i < ratingList.size(); i += chunkSize) {
+                final List<Rating> chunk = ratingList.subList(i, Math.min(i + chunkSize, ratingList.size()));
+                tasks.add(() -> {
+                    for (Rating rating : chunk) {
+                        String user = rating.getUserId();
+                        double[] userVec = userFactors.get(user);
+                        ReentrantLock uLock = userLocks.get(user);
 
-                if (userVec == null || uLock == null) {
-                    return;
-                }
-
-                List<String> currentGenres = rating.getGenres();
-                if (currentGenres == null) return;
-
-                for (String genre : currentGenres) {
-                    double[] genreVec = genreFactors.get(genre);
-                    ReentrantLock gLock = genreLocks.get(genre);
-
-                    if (genreVec == null || gLock == null) {
-                          continue;
-                    }
-
-                    ReentrantLock firstLock;
-                    ReentrantLock secondLock;
-
-                    if (user.compareTo(genre) < 0) {
-                        firstLock = uLock;
-                        secondLock = gLock;
-                    } else if (user.compareTo(genre) > 0) {
-                        firstLock = gLock;
-                        secondLock = uLock;
-                    } else {
-                        firstLock = uLock;
-                        secondLock = gLock;
-                    }
-
-                    firstLock.lock();
-                    try {
-                        secondLock.lock();
-                        try {
-                            double prediction = dot(userVec, genreVec);
-                            double error = rating.getRating() - prediction;
-                            updateVectors(userVec, genreVec, error);
-                        } finally {
-                            secondLock.unlock();
+                        if (userVec == null || uLock == null) {
+                            continue;
                         }
-                    } finally {
-                        firstLock.unlock();
+
+                        List<String> currentGenres = rating.getGenres();
+                        if (currentGenres == null) continue;
+
+                        for (String genre : currentGenres) {
+                            double[] genreVec = genreFactors.get(genre);
+                            ReentrantLock gLock = genreLocks.get(genre);
+
+                            if (genreVec == null || gLock == null) {
+                                continue;
+                            }
+
+                            ReentrantLock firstLock = (user.compareTo(genre) < 0) ? uLock : gLock;
+                            ReentrantLock secondLock = (user.compareTo(genre) < 0) ? gLock : uLock;
+                            if (user.equals(genre)) {
+                                secondLock = gLock;
+                            }
+
+                            firstLock.lock();
+                            try {
+                                secondLock.lock();
+                                try {
+                                    double prediction = dot(userVec, genreVec);
+                                    double error = rating.getRating() - prediction;
+                                    updateVectors(userVec, genreVec, error);
+                                } finally {
+                                    secondLock.unlock();
+                                }
+                            } finally {
+                                firstLock.unlock();
+                            }
+                        }
                     }
-                }
-            });
+                    return null;
+                });
+            }
+            try {
+                executor.invokeAll(tasks);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
             if ((epoch + 1) % 10 == 0) {
                 System.out.println("Epoch " + (epoch + 1) + "/" + NUM_EPOCHS + " concluída.");
             }
         }
+        executor.shutdown();
     }
+
 
     private static void updateVectors(double[] userVec, double[] genreVec, double error) {
         for (int i = 0; i < NUM_FEATURES; i++) {
@@ -206,6 +219,7 @@ public class MovieRecommenderSGD {
             genreVec[i] += LEARNING_RATE * (error * u - REGULARIZATION * g);
         }
     }
+
 
     private static ConcurrentMap<String, Map<String, Double>> predictRatingsMatrix(ConcurrentLinkedQueue<Rating> ratings)
             throws InterruptedException {
@@ -220,10 +234,12 @@ public class MovieRecommenderSGD {
         ConcurrentMap<String, Map<String, Double>> matrix = new ConcurrentHashMap<>();
         int numThreads = Math.max(2, Runtime.getRuntime().availableProcessors());
         ExecutorService executor = Executors.newFixedThreadPool(numThreads, Thread.ofPlatform().factory());
+
         List<String> userList = new ArrayList<>(allUsers);
         if (userList.isEmpty() && !ratings.isEmpty()) {
-            ratings.stream().map(Rating::getUserId).distinct().forEach(userList::add);
+            userList.addAll(ratingsByUser.keySet());
         }
+
         int chunkSize = (userList.isEmpty()) ? 0 : (int) Math.ceil(userList.size() / (double) numThreads);
         if (chunkSize == 0 && !userList.isEmpty()) chunkSize = 1;
 
@@ -265,7 +281,6 @@ public class MovieRecommenderSGD {
                         }
                     }
                     matrix.put(user, userRatings);
-                    //predicts.getAndIncrement();
                 }
                 return null;
             });
@@ -275,31 +290,25 @@ public class MovieRecommenderSGD {
         }
         executor.shutdown();
 
-        System.out.println("\n--------------------------------------------------");
-        System.out.println("Total de previsões (predicts) realizadas: " + predicts);
-        System.out.println("--------------------------------------------------\n");
-
         return matrix;
-
     }
 
+
     private static void savePredictedRatingsToJson(
-            ConcurrentLinkedQueue<Rating> ratings, // Fila de avaliações original
-            Map<String, Map<String, Double>> predictedMatrix, // Matriz de predições
-            String outputDirectory, // Diretório de saída
-            String baseFilename // Nome base para os arquivos de saída
+            ConcurrentLinkedQueue<Rating> ratings,
+            Map<String, Map<String, Double>> predictedMatrix,
+            String outputDirectory,
+            String baseFilename
     ) {
-        // 1. Obter listas ordenadas de todos os usuários e títulos
         List<String> allUsersOrdered = ratings.stream()
                 .map(Rating::getUserId)
                 .distinct()
                 .sorted()
                 .collect(Collectors.toList());
 
-        // Se a lista de ratings estiver vazia, mas a predictedMatrix não, tenta obter usuários da matriz
         if (allUsersOrdered.isEmpty() && !predictedMatrix.isEmpty()) {
             allUsersOrdered.addAll(predictedMatrix.keySet());
-            Collections.sort(allUsersOrdered); // Garante a ordem
+            Collections.sort(allUsersOrdered);
         }
 
         List<String> allTitlesOrdered = ratings.stream()
@@ -308,36 +317,30 @@ public class MovieRecommenderSGD {
                 .sorted()
                 .collect(Collectors.toList());
 
-        // Se a lista de ratings estiver vazia, mas a predictedMatrix não, tenta obter títulos da matriz
         if (allTitlesOrdered.isEmpty() && !predictedMatrix.isEmpty()) {
             Set<String> titlesSet = new HashSet<>();
             predictedMatrix.values().forEach(userMap -> titlesSet.addAll(userMap.keySet()));
             allTitlesOrdered.addAll(titlesSet);
-            Collections.sort(allTitlesOrdered); // Garante a ordem
+            Collections.sort(allTitlesOrdered);
         }
 
-        // 2. Criar um mapa de títulos para gêneros
-        // Usar ConcurrentHashMap é seguro, mas como é preenchido sequencialmente antes das threads,
-        // um HashMap normal também funcionaria se não modificado depois.
+
         Map<String, List<String>> genreMap = new ConcurrentHashMap<>();
-        if (ratings != null) { // Adiciona verificação de nulo para 'ratings'
+        if (ratings != null) {
             for (Rating r : ratings) {
-                if (r != null && r.getTitle() != null && r.getGenres() != null) { // Verifica r, título e gêneros
+                if (r != null && r.getTitle() != null && r.getGenres() != null) {
                     genreMap.putIfAbsent(r.getTitle(), r.getGenres());
                 }
             }
         }
 
 
-        // Gson ainda pode ser útil para configurar o JsonWriter ou para outras tarefas, mas não para toJson em si.
-        // Gson gson = new GsonBuilder().setPrettyPrinting().create(); // Não é mais usado para a serialização principal
 
         List<Future<?>> futures = new ArrayList<>();
 
-        // Lógica para dividir usuários em arquivos
-        int usersPerFileTarget = 15; // Seu valor original, interpretado como "objetivo de arquivos"
+        int usersPerFileTarget = 15;
         int usersPerFile = allUsersOrdered.isEmpty() ? 1 : (int) Math.ceil((double) allUsersOrdered.size() / usersPerFileTarget);
-        if (usersPerFile == 0 && !allUsersOrdered.isEmpty()) usersPerFile = 1; // Garante pelo menos 1 se houver usuários
+        if (usersPerFile == 0 && !allUsersOrdered.isEmpty()) usersPerFile = 1;
 
         System.out.printf("Iniciando salvamento de %d usuários em blocos de aproximadamente %d usuários por arquivo (total %d arquivos).%n",
                 allUsersOrdered.size(),
@@ -353,85 +356,80 @@ public class MovieRecommenderSGD {
             for (int i = 0; i < allUsersOrdered.size(); i += usersPerFile) {
                 filePart++;
                 int end = Math.min(i + usersPerFile, allUsersOrdered.size());
-                List<String> userChunk = allUsersOrdered.subList(i, end); // Sublista para o chunk atual
+                List<String> userChunk = allUsersOrdered.subList(i, end);
 
-                // Nome final do arquivo para este chunk
                 String chunkFilename = String.format("%s_part_%d.json", baseFilename, filePart);
                 String fullPath = outputDirectory + (outputDirectory.endsWith("/") ? "" : "/") + chunkFilename;
 
-                // Copia o chunk de usuários para garantir que seja efetivamente final para o lambda
                 final List<String> currentUserChunk = new ArrayList<>(userChunk);
                 final Map<String, Map<String, Double>> finalPredictedMatrix = predictedMatrix;
                 final List<String> finalAllTitlesOrdered = allTitlesOrdered;
                 final Map<String, List<String>> finalGenreMap = genreMap;
-                final String finalChunkFilename = chunkFilename; // Para mensagem de erro
+                final String finalChunkFilename = chunkFilename;
 
                 Future<?> future = virtualThreadExecutor.submit(() -> {
-                    // NÃO construir List<Map<String, Object>> usersOutputForChunk em memória
-                    // Em vez disso, usar JsonWriter para streaming direto para o arquivo.
-                    try (JsonWriter jsonWriter = new JsonWriter(new FileWriter(fullPath))) {
-                        jsonWriter.setIndent("  "); // Para "pretty printing"
 
-                        jsonWriter.beginArray(); // Cada arquivo de chunk será um array de usuários
+                    try (JsonWriter jsonWriter = new JsonWriter(new FileWriter(fullPath))) {
+                        jsonWriter.setIndent("  ");
+
+                        jsonWriter.beginArray();
 
                         for (String user : currentUserChunk) {
-                            jsonWriter.beginObject(); // Inicia objeto do usuário: {
+                            jsonWriter.beginObject();
                             jsonWriter.name("user_id").value(user);
 
                             jsonWriter.name("movies");
-                            jsonWriter.beginArray(); // Inicia lista de filmes para este usuário: [
+                            jsonWriter.beginArray();
 
                             Map<String, Double> userRatings = finalPredictedMatrix.getOrDefault(user, Collections.emptyMap());
 
                             for (String title : finalAllTitlesOrdered) {
-                                jsonWriter.beginObject(); // Inicia dados do filme: {
+                                jsonWriter.beginObject();
                                 jsonWriter.name("title").value(title);
 
                                 jsonWriter.name("genre");
-                                jsonWriter.beginArray(); // Inicia lista de gêneros para este filme: [
+                                jsonWriter.beginArray();
                                 List<String> genres = finalGenreMap.getOrDefault(title, Collections.emptyList());
                                 for (String genre : genres) {
                                     jsonWriter.value(genre);
                                 }
-                                jsonWriter.endArray(); // Finaliza lista de gêneros: ]
+                                jsonWriter.endArray();
 
                                 jsonWriter.name("rating");
                                 Double rating = userRatings.get(title);
                                 if (rating != null) {
-                                    jsonWriter.value(rating); // Escreve o número de avaliação
+                                    jsonWriter.value(rating);
                                 } else {
-                                    jsonWriter.nullValue(); // Escreve null JSON se a avaliação não existir
+                                    jsonWriter.nullValue();
                                 }
-                                jsonWriter.endObject(); // Finaliza dados do filme: }
+                                jsonWriter.endObject();
                             }
-                            jsonWriter.endArray(); // Finaliza lista de filmes para este usuário: ]
-                            jsonWriter.endObject(); // Finaliza objeto do usuário: }
+                            jsonWriter.endArray();
+                            jsonWriter.endObject();
                         }
-                        jsonWriter.endArray(); // Finaliza o array de usuários para este arquivo de chunk: ]
+                        jsonWriter.endArray();
 
                     } catch (IOException e) {
                         System.err.println("Erro ao escrever arquivo " + finalChunkFilename + ": " + e.getMessage());
-                        // Você pode querer lançar uma RuntimeException aqui ou usar um manipulador de exceção mais robusto
-                        // e.printStackTrace(); // Para depuração
+                        e.printStackTrace();
                     }
                 });
                 futures.add(future);
             }
 
-            // Aguarda a conclusão de todas as tarefas de salvamento
             for (Future<?> f : futures) {
                 try {
-                    f.get(); // Espera a conclusão e obtém exceções, se houver
+                    f.get();
                 } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt(); // Restaura o status de interrupção
+                    Thread.currentThread().interrupt();
                     System.err.println("Thread principal interrompida enquanto aguardava o salvamento dos arquivos.");
                 } catch (ExecutionException e) {
                     System.err.println("Erro na execução do salvamento de arquivo: " +
                             (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()));
-                    // e.printStackTrace(); // Para depuração da causa raiz
+
                 }
             }
-        } // O ExecutorService é fechado automaticamente aqui (try-with-resources)
+        }
 
         System.out.println("Processo de salvamento em múltiplos arquivos concluído.");
     }
@@ -483,12 +481,12 @@ public class MovieRecommenderSGD {
             arquivos = carregarArquivosDaPasta(pastaDeDatasets);
             if (arquivos.isEmpty()) {
                 System.err.println("Nenhum arquivo encontrado em '" + pastaDeDatasets + "'. Verifique o caminho e o conteúdo da pasta.");
-                return; // Encerra se nenhum arquivo for encontrado para evitar erros subsequentes
+                return;
             }
         } catch (IOException e) {
             System.err.println("Erro ao ler arquivos da pasta '" + pastaDeDatasets + "': " + e.getMessage());
-            // e.printStackTrace(); // Descomente para mais detalhes do erro
-            return; // Encerra em caso de erro de leitura da pasta
+            // e.printStackTrace();
+            return;
         }
         */
 
@@ -507,7 +505,6 @@ public class MovieRecommenderSGD {
             System.err.println("Apesar dos arquivos serem listados, nenhum rating foi carregado. Verifique o formato dos arquivos e a lógica de RatingLoader.loadRatingsParallel.");
             return;
         } else if (ratings.isEmpty()) {
-            // Mensagem já dada acima, mas podemos reforçar.
             System.err.println("Nenhum rating para processar.");
             return;
         }
