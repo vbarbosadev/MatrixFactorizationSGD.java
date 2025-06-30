@@ -18,19 +18,16 @@ public class MovieRecommenderSGD {
 
 
 
-    // ... dentro da sua classe MovieRecommenderSGDvPlatform
     private static class Rating {
         String user_id;
         String title;
 
-        // A anotação abaixo resolve o problema.
-        // Ela diz ao Gson: "Tente mapear o JSON 'genres'. Se não encontrar, tente 'genre'."
+     
         @SerializedName(value = "genres", alternate = "genre")
         List<String> genre;
 
         double rating;
 
-        // Nenhum outra alteração é necessária na classe ou no resto do código
         public Rating(String user_id, String title, List<String> genre, double rating) {
             this.user_id = user_id;
             this.title = title;
@@ -74,7 +71,7 @@ public class MovieRecommenderSGD {
                         e.printStackTrace();
                     }
                 });
-                t.start(); // Lembre-se: platform threads precisam ser iniciadas manualmente
+                t.start(); 
                 threads.add(t);
             }
 
@@ -89,7 +86,6 @@ public class MovieRecommenderSGD {
             return ratings;
         }
 
-        // Sobrecarga para um único arquivo
         public static ConcurrentLinkedQueue<Rating> loadRatingsParallel(String filename) {
             return loadRatingsParallel(Set.of(filename));
         }
@@ -117,7 +113,6 @@ public class MovieRecommenderSGD {
         long readTime = System.nanoTime();
         System.out.printf("lidos em: %.2f segundos%n", (readTime - startTime) / 1e9);
 
-        //saveOriginalMatrixWithNulls(ratings, "dataset/avaliacoes_iniciais_com_nulls.json");
         initializeFactors(ratings);
 
         Map<String, List<String>> movieToGenresMap = new HashMap<>();
@@ -145,7 +140,6 @@ public class MovieRecommenderSGD {
         System.out.printf("matrixGen rodou em: %.2f segundos%n", (matrixTime - trainingTime) / 1e9);
 
 
-        //printRatingsMatrix(matrix, ratings);
 
         long printTime = System.nanoTime();
         //  System.out.printf("printMatrix rodou em: %.2f segundos%n", (printTime - matrixTime) / 1e9);
@@ -165,7 +159,6 @@ public class MovieRecommenderSGD {
         allUsers = ConcurrentHashMap.newKeySet();
         allGenres = ConcurrentHashMap.newKeySet();
 
-        // Etapa 1: Popular allUsers e allGenres
         ExecutorService executor1 = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
         for (Rating r : ratings) {
@@ -178,7 +171,6 @@ public class MovieRecommenderSGD {
         executor1.shutdown();
         executor1.awaitTermination(1, TimeUnit.MINUTES);
 
-        // Etapa 2: Inicializar userFactors e genreFactors
         ExecutorService executor2 = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
         for (String user : allUsers) {
