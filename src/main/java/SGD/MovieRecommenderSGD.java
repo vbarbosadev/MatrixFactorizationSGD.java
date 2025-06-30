@@ -148,23 +148,54 @@ public class MovieRecommenderSGD {
 
         List<Rating> ratingList = new ArrayList<>(ratings);
 
-        for (int epoch = 0; epoch < NUM_EPOCHS; epoch++) {
-            ratingList.parallelStream().forEach(rating -> {
-                String user = rating.getUserId();
-                double[] userVec = userFactors.get(user);
+        int numThreads = Runtime.getRuntime().availableProcessors();
+        ExecutorService executor = Executors.newFixedThreadPool(numThreads);
 
-                for (String genre : rating.getGenres()) {
-                    double[] genreVec = genreFactors.get(genre);
 
-                    double prediction = dot(userVec, genreVec);
-                    double error = rating.getRating() - prediction;
-
-                    
-                    updateVectors(userVec, genreVec, error);
-                }
-            });
+        int chunkSize = (int) Math.ceil((double) ratingList.size() / (numThreads * 2));
+        if (chunkSize == 0 && !ratingList.isEmpty()) {
+            chunkSize = 1;
         }
+
+        for (int epoch = 0; epoch < NUM_EPOCHS; epoch++) {
+            List<Callable<Void>> tasks = new ArrayList<>();
+
+            for (int i = 0; i < ratingList.size(); i += chunkSize) {
+                final int start = i;
+                final int end = Math.min(start + chunkSize, ratingList.size());
+                List<Rating> chunk = ratingList.subList(start, end);
+
+                tasks.add(() -> {
+                    for (Rating rating : chunk) {
+                        String user = rating.getUserId();
+                        double[] userVec = userFactors.get(user);
+
+                        for (String genre : rating.getGenres()) {
+                            double[] genreVec = genreFactors.get(genre);
+
+                            double prediction = dot(userVec, genreVec);
+                            double error = rating.getRating() - prediction;
+
+                            updateVectors(userVec, genreVec, error);
+                        }
+                    }
+                    return null;
+                });
+            }
+
+            try {
+
+                executor.invokeAll(tasks);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                System.err.println("O treinamento foi interrompido durante a época " + epoch);
+                break;
+            }
+        }
+
+        executor.shutdown();
     }
+
 
     public static void updateVectors(double[] userVec, double[] genreVec, double error) {
         for (int i = 0; i < NUM_FEATURES; i++) {
@@ -178,59 +209,75 @@ public class MovieRecommenderSGD {
 
     private static ConcurrentMap<String, Map<String, Double>> predictRatingsMatrix(ConcurrentLinkedQueue<Rating> ratings)
             throws InterruptedException {
+
+        System.out.println("Iniciando geração da matriz de predições...");
+
         ConcurrentMap<String, List<Rating>> ratingsByUser = new ConcurrentHashMap<>();
-        for (Rating r : ratings) {
-            ratingsByUser.computeIfAbsent(r.getUserId(), k -> new ArrayList<>()).add(r);
-        }
         ConcurrentMap<String, List<Rating>> ratingsByTitle = new ConcurrentHashMap<>();
         for (Rating r : ratings) {
+            ratingsByUser.computeIfAbsent(r.getUserId(), k -> new ArrayList<>()).add(r);
             ratingsByTitle.computeIfAbsent(r.getTitle(), k -> new ArrayList<>()).add(r);
         }
+
         ConcurrentMap<String, Map<String, Double>> matrix = new ConcurrentHashMap<>();
-        int numThreads = Math.max(2, Runtime.getRuntime().availableProcessors());
-        ExecutorService executor = Executors.newFixedThreadPool(numThreads, Thread.ofPlatform().factory());
+
+        int numThreads = Runtime.getRuntime().availableProcessors();
+        ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+
         List<String> userList = new ArrayList<>(allUsers);
         if (userList.isEmpty() && !ratings.isEmpty()) {
-            ratings.stream().map(Rating::getUserId).distinct().forEach(userList::add);
+            userList.addAll(ratingsByUser.keySet());
         }
-        int chunkSize = (userList.isEmpty()) ? 0 : (int) Math.ceil(userList.size() / (double) numThreads);
-        if (chunkSize == 0 && !userList.isEmpty()) chunkSize = 1;
+
+        int chunkSize = (int) Math.ceil((double) userList.size() / (numThreads * 2));
+        if (chunkSize == 0 && !userList.isEmpty()) {
+            chunkSize = 1;
+        }
 
         List<Callable<Void>> tasks = new ArrayList<>();
+
         for (int i = 0; i < userList.size(); i += chunkSize) {
-            int end = Math.min(i + chunkSize, userList.size());
-            List<String> chunk = userList.subList(i, end);
+            final int start = i;
+            final int end = Math.min(start + chunkSize, userList.size());
+            List<String> userChunk = userList.subList(start, end);
+
             tasks.add(() -> {
-                for (String user : chunk) {
+                for (String user : userChunk) {
                     double[] userVec = userFactors.get(user);
                     if (userVec == null) continue;
+
                     Map<String, Double> userRatings = new HashMap<>();
+
                     List<Rating> knownRatings = ratingsByUser.get(user);
                     if (knownRatings != null) {
                         for (Rating r : knownRatings) {
                             userRatings.put(r.getTitle(), r.getRating());
-                            //predicts.getAndIncrement();
                         }
                     }
+
                     for (Map.Entry<String, List<Rating>> entry : ratingsByTitle.entrySet()) {
                         String title = entry.getKey();
+
                         if (userRatings.containsKey(title)) continue;
+
                         List<Rating> ratingsForTitle = entry.getValue();
                         if (ratingsForTitle.isEmpty()) continue;
+
                         List<String> currentGenres = ratingsForTitle.get(0).getGenres();
                         if (currentGenres == null || currentGenres.isEmpty()) continue;
-                        double predicted = 0.0;
+
+                        double predictedScore = 0.0;
                         int validGenres = 0;
                         for (String genre : currentGenres) {
                             double[] genreVec = genreFactors.get(genre);
                             if (genreVec != null) {
-                                predicted += dot(userVec, genreVec);
+                                predictedScore += dot(userVec, genreVec);
                                 validGenres++;
                             }
                         }
+
                         if (validGenres > 0) {
-                            predicted /= validGenres;
-                            userRatings.put(title, predicted);
+                            userRatings.put(title, predictedScore / validGenres);
                         }
                     }
                     matrix.put(user, userRatings);
@@ -238,16 +285,17 @@ public class MovieRecommenderSGD {
                 return null;
             });
         }
+
         if (!tasks.isEmpty()) {
             executor.invokeAll(tasks);
         }
         executor.shutdown();
-        
 
+        System.out.println("Matriz de predições gerada com sucesso.");
         return matrix;
-
     }
- 
+
+
 
 
     private static void savePredictedRatingsToMultipleFiles(
