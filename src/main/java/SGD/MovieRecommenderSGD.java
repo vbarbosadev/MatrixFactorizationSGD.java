@@ -66,7 +66,6 @@ public class MovieRecommenderSGD {
                 for (String filename : filenames) {
                     Future<?> future = virtualThreadExecutor.submit(() -> {
                         try (FileReader reader = new FileReader(filename)) {
-                            // Gson usará a definição atualizada da classe Rating para o parsing
                             List<Rating> localList = gson.fromJson(reader, ratingListType);
                             if (localList != null) {
                                 ratings.addAll(localList);
@@ -115,7 +114,7 @@ public class MovieRecommenderSGD {
         try (Stream<Path> streamDePaths = Files.list(Paths.get(caminhoDaPasta))) {
             Set<String> arquivosEncontrados = streamDePaths
                     .filter(Files::isRegularFile) 
-                    .peek(path -> System.out.println("Encontrado arquivo: " + path.toString())) // Opcional: para logar os arquivos encontrados
+                    .peek(path -> System.out.println("Encontrado arquivo: " + path.toString())) 
                     .map(Path::toString)          
                     .collect(Collectors.toSet());
             if (arquivosEncontrados.isEmpty()) {
@@ -130,23 +129,22 @@ public class MovieRecommenderSGD {
         Set<String> arquivos;
         /*
 
-        // caso queira usar uma pasta de arquivos, descomente esta parte
-        String pastaDeDatasets = "dataset/avaliacao_individual"; // Defina o nome da sua pasta aqui
+        
+        String pastaDeDatasets = "dataset/avaliacao_individual";
         try {
             arquivos = carregarArquivosDaPasta(pastaDeDatasets);
             if (arquivos.isEmpty()) {
                 System.err.println("Nenhum arquivo encontrado em '" + pastaDeDatasets + "'. Verifique o caminho e o conteúdo da pasta.");
-                return; // Encerra se nenhum arquivo for encontrado para evitar erros subsequentes
+                return; 
             }
         } catch (IOException e) {
             System.err.println("Erro ao ler arquivos da pasta '" + pastaDeDatasets + "': " + e.getMessage());
-            // e.printStackTrace(); // Descomente para mais detalhes do erro
-            return; // Encerra em caso de erro de leitura da pasta
+            // e.printStackTrace(); 
+            return; 
         }
         */
 
         
-        // caso queira usar uma pasta de arquivos, comente esta parte
         arquivos = Set.of("dataset/avaliacoes_completas1GB.json");
 
 
@@ -161,7 +159,6 @@ public class MovieRecommenderSGD {
             System.err.println("Apesar dos arquivos serem listados, nenhum rating foi carregado. Verifique o formato dos arquivos e a lógica de RatingLoader.loadRatingsParallel.");
             return;
         } else if (ratings.isEmpty()) {
-            // Mensagem já dada acima, mas podemos reforçar.
             System.err.println("Nenhum rating para processar.");
             return;
         }
