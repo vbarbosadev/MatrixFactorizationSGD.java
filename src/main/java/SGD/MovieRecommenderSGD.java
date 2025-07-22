@@ -193,8 +193,8 @@ public class MovieRecommenderSGD {
         return allUsers.parallelStream().collect(Collectors.toConcurrentMap(
                 user -> user,
                 user -> {
-                    double[] userVec = userFactors.get(user);
-                    if (userVec == null) {
+                    //double[] userVec = userFactors.get(user);
+                    if (userFactors.get(user) == null) {
                         return Collections.emptyMap();
                     }
 
@@ -223,7 +223,7 @@ public class MovieRecommenderSGD {
                         for (String genre : currentGenres) {
                             double[] genreVec = genreFactors.get(genre);
                             if (genreVec != null) {
-                                predicted += dot(userVec, genreVec);
+                                predicted += dot(userFactors.get(user), genreVec);
                                 validGenres++;
                             }
                         }
@@ -403,7 +403,7 @@ public class MovieRecommenderSGD {
 
         //Set<String> arquivos = Set.of("C:\\Users\\Suporte\\Documents\\vinicius\\Programação Distribuída\\MF-SGD\\dataset\\avaliacoes_completas100MB.json");
 
-        Set<String> arquivos = Set.of("../dataset/avaliacoes_completas50MB.json");
+        Set<String> arquivos = Set.of("../dataset/avaliacoes_completas1GB.json");
 
         ConcurrentLinkedQueue<Rating> ratings = loadRatingsParallel(arquivos);
 
