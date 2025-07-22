@@ -1,6 +1,7 @@
 package SGD;
 
-import com.google.gson.*;
+import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonWriter;
 import org.jetbrains.annotations.NotNull;
@@ -14,8 +15,6 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 public class MovieRecommenderSGD {
-
-
 
     private static class Rating {
         String user_id;
@@ -36,38 +35,90 @@ public class MovieRecommenderSGD {
         public double getRating() { return rating; }
     }
 
+    // Constantes e estruturas de dados (semelhante às versões anteriores)
     private static final int NUM_FEATURES = 10;
     private static final double LEARNING_RATE = 0.01;
     private static final double REGULARIZATION = 0.02;
     private static final int NUM_EPOCHS = 100;
-    private static final int SEQUENTIAL_THRESHOLD = 1000; // Limiar para execução sequencial nas tarefas Fork/Join
 
-    private static final ConcurrentHashMap<String, double[]> userFactors = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, double[]> genreFactors = new ConcurrentHashMap<>();
-    private static Set<String> allGenres = ConcurrentHashMap.newKeySet();
+    private static ConcurrentHashMap<String, double[]> userFactors = new ConcurrentHashMap<>();
+    private static ConcurrentHashMap<String, double[]> genreFactors = new ConcurrentHashMap<>();
     private static Set<String> allUsers = ConcurrentHashMap.newKeySet();
+    private static Set<String> allGenres = ConcurrentHashMap.newKeySet();
 
     private static final Gson gson = new Gson();
     private static final Type ratingListType = new TypeToken<List<Rating>>() {}.getType();
-    // Pool Fork/Join compartilhado para todas as operações computacionais
-    private static final ForkJoinPool pool = new ForkJoinPool();
 
-    private static class TrainingTask extends RecursiveAction {
-        private final List<Rating> ratings;
+    public static ConcurrentLinkedQueue<Rating> loadRatingsParallel(Set<String> filenames) {
+        ConcurrentLinkedQueue<Rating> ratings = new ConcurrentLinkedQueue<>();
+        try (ExecutorService virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<?>> futures = filenames.stream()
+                    .map(filename -> virtualThreadExecutor.submit(() -> {
+                        try (FileReader reader = new FileReader(filename)) {
+                            List<Rating> localList = gson.fromJson(reader, ratingListType);
+                            if (localList != null) {
+                                ratings.addAll(localList);
+                            }
+                        } catch (IOException | JsonSyntaxException e) {
+                            System.err.println("Erro ao processar arquivo: " + filename + " - " + e.getMessage());
+                        }
+                    }))
+                    .collect(Collectors.toList());
 
-        TrainingTask(List<Rating> ratings) {
-            this.ratings = ratings;
+            for (Future<?> f : futures) {
+                try {
+                    f.get();
+                } catch (InterruptedException | ExecutionException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+        return ratings;
+    }
+
+    public static void initializeFactors(@NotNull ConcurrentLinkedQueue<Rating> ratings) {
+        ratings.parallelStream().forEach(r -> {
+            allUsers.add(r.getUserId());
+            allGenres.addAll(r.getGenres());
+        });
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())) {
+            allUsers.forEach(user -> executor.submit(() -> {
+                double[] features = ThreadLocalRandom.current().doubles(NUM_FEATURES, 0, 0.1).toArray();
+                userFactors.put(user, features);
+            }));
+            allGenres.forEach(genre -> executor.submit(() -> {
+                double[] features = ThreadLocalRandom.current().doubles(NUM_FEATURES, 0, 0.1).toArray();
+                genreFactors.put(genre, features);
+            }));
+            executor.shutdown();
+            try {
+                executor.awaitTermination(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    // --- Implementação do Treinamento com ForkJoin ---
+
+    private static class TrainTask extends RecursiveAction {
+        private final List<Rating> ratingsChunk;
+        private static final int THRESHOLD = 1000; // Limite para processamento direto
+
+        TrainTask(List<Rating> ratingsChunk) {
+            this.ratingsChunk = ratingsChunk;
         }
 
         @Override
         protected void compute() {
-            if (ratings.size() <= SEQUENTIAL_THRESHOLD) {
-                for (Rating rating : ratings) {
+            if (ratingsChunk.size() <= THRESHOLD) {
+                // Caso base: processa o bloco diretamente
+                for (Rating rating : ratingsChunk) {
                     String user = rating.getUserId();
                     double[] userVec = userFactors.get(user);
                     if (userVec == null) continue;
 
-                    // A sincronização ainda é necessária para proteger os vetores mutáveis
                     synchronized (userVec) {
                         for (String genre : rating.getGenres()) {
                             double[] genreVec = genreFactors.get(genre);
@@ -83,148 +134,25 @@ public class MovieRecommenderSGD {
                     }
                 }
             } else {
-                // Caso recursivo: divide a tarefa em duas e invoca em paralelo.
-                int mid = ratings.size() / 2;
-                TrainingTask task1 = new TrainingTask(ratings.subList(0, mid));
-                TrainingTask task2 = new TrainingTask(ratings.subList(mid, ratings.size()));
-                invokeAll(task1, task2);
+                int mid = ratingsChunk.size() / 2;
+                TrainTask left = new TrainTask(ratingsChunk.subList(0, mid));
+                TrainTask right = new TrainTask(ratingsChunk.subList(mid, ratingsChunk.size()));
+                invokeAll(left, right); // Executa as subtarefas em paralelo e espera (Join)
             }
         }
     }
 
-    /**
-     * Tarefa Fork/Join para prever a matriz de avaliações.
-     * Estende RecursiveAction e popula um mapa concorrente compartilhado.
-     */
-    private static class PredictionTask extends RecursiveAction {
-        private final List<String> userChunk;
-        private final ConcurrentMap<String, Map<String, Double>> matrix;
-        private final Map<String, List<Rating>> ratingsByUser;
-        private final Map<String, List<Rating>> ratingsByTitle;
-
-        PredictionTask(List<String> userChunk, ConcurrentMap<String, Map<String, Double>> matrix,
-                       Map<String, List<Rating>> ratingsByUser, Map<String, List<Rating>> ratingsByTitle) {
-            this.userChunk = userChunk;
-            this.matrix = matrix;
-            this.ratingsByUser = ratingsByUser;
-            this.ratingsByTitle = ratingsByTitle;
-        }
-
-        @Override
-        protected void compute() {
-            // Caso base: processa o chunk de usuários sequencialmente.
-            if (userChunk.size() <= SEQUENTIAL_THRESHOLD) {
-                for (String user : userChunk) {
-                    double[] userVec = userFactors.get(user);
-                    if (userVec == null) continue;
-
-                    Map<String, Double> userRatings = new HashMap<>();
-                    List<Rating> knownRatings = ratingsByUser.get(user);
-                    if (knownRatings != null) {
-                        for (Rating r : knownRatings) {
-                            userRatings.put(r.getTitle(), r.getRating());
-                        }
-                    }
-
-                    for (Map.Entry<String, List<Rating>> entry : ratingsByTitle.entrySet()) {
-                        String title = entry.getKey();
-                        if (userRatings.containsKey(title)) continue;
-
-                        List<Rating> ratingsForTitle = entry.getValue();
-                        if (ratingsForTitle.isEmpty()) continue;
-
-                        List<String> currentGenres = ratingsForTitle.get(0).getGenres();
-                        if (currentGenres == null || currentGenres.isEmpty()) continue;
-
-                        double predicted = 0.0;
-                        int validGenres = 0;
-                        for (String genre : currentGenres) {
-                            double[] genreVec = genreFactors.get(genre);
-                            if (genreVec != null) {
-                                predicted += dot(userVec, genreVec);
-                                validGenres++;
-                            }
-                        }
-                        if (validGenres > 0) {
-                            predicted /= validGenres;
-                            userRatings.put(title, predicted);
-                        }
-                    }
-                    matrix.put(user, userRatings);
-                }
-            } else {
-                // Caso recursivo: divide a lista de usuários e invoca em paralelo.
-                int mid = userChunk.size() / 2;
-                PredictionTask task1 = new PredictionTask(userChunk.subList(0, mid), matrix, ratingsByUser, ratingsByTitle);
-                PredictionTask task2 = new PredictionTask(userChunk.subList(mid, userChunk.size()), matrix, ratingsByUser, ratingsByTitle);
-                invokeAll(task1, task2);
-            }
-        }
-    }
-
-
-    // --- Métodos Principais (Refatorados e Originais) ---
-
-    public static ConcurrentLinkedQueue<Rating> loadRatingsParallel(Set<String> filenames) {
-        ConcurrentLinkedQueue<Rating> ratings = new ConcurrentLinkedQueue<>();
-        List<Future<?>> futures = new ArrayList<>();
-
-        try (ExecutorService virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (String filename : filenames) {
-                Future<?> future = virtualThreadExecutor.submit(() -> {
-                    try (FileReader reader = new FileReader(filename)) {
-                        List<Rating> localList = gson.fromJson(reader, ratingListType);
-                        if (localList != null) {
-                            ratings.addAll(localList);
-                        }
-                    } catch (IOException e) {
-                        System.err.println("Erro ao ler arquivo: " + filename + " (" + e.getClass().getSimpleName() + ": " + e.getMessage() + ")");
-                    } catch (JsonSyntaxException e) {
-                        System.err.println("Erro de sintaxe JSON no arquivo: " + filename + " (" + e.getMessage() + ")");
-                    }
-                });
-                futures.add(future);
-            }
-
-            for (Future<?> f : futures) {
-                try {
-                    f.get();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    System.err.println("Carregamento de ratings interrompido.");
-                } catch (ExecutionException e) {
-                    System.err.println("Erro durante execução do carregamento de arquivo: " + e.getCause());
-                }
-            }
-        }
-        return ratings;
-    }
-
-    public static void initializeFactors(@NotNull ConcurrentLinkedQueue<Rating> ratings) throws InterruptedException {
-        allUsers = ratings.parallelStream().map(Rating::getUserId).collect(Collectors.toSet());
-        allGenres = ratings.parallelStream().flatMap(r -> r.getGenres().stream()).collect(Collectors.toSet());
-
-        allUsers.parallelStream().forEach(user -> {
-            double[] features = ThreadLocalRandom.current().doubles(NUM_FEATURES, 0, 0.1).toArray();
-            userFactors.put(user, features);
-        });
-
-        allGenres.parallelStream().forEach(genre -> {
-            double[] features = ThreadLocalRandom.current().doubles(NUM_FEATURES, 0, 0.1).toArray();
-            genreFactors.put(genre, features);
-        });
-    }
-
-    // ### MÉTODO trainModel REFATORADO COM FORK/JOIN ###
     public static void trainModel(ConcurrentLinkedQueue<Rating> ratings) {
         System.out.println("Iniciando Treinamento com Fork/Join Framework.");
         List<Rating> ratingList = new ArrayList<>(ratings);
+        ForkJoinPool forkJoinPool = new ForkJoinPool();
 
         for (int epoch = 0; epoch < NUM_EPOCHS; epoch++) {
-            TrainingTask mainTask = new TrainingTask(ratingList);
-            pool.invoke(mainTask); // Invoca a tarefa principal no pool Fork/Join
+            TrainTask mainTask = new TrainTask(ratingList);
+            forkJoinPool.invoke(mainTask); // Inicia a execução
         }
-        System.out.println("Treinamento concluído.");
+
+        forkJoinPool.shutdown();
     }
 
     public static void updateVectors(double[] userVec, double[] genreVec, double error) {
@@ -236,18 +164,80 @@ public class MovieRecommenderSGD {
         }
     }
 
-    // ### MÉTODO predictRatingsMatrix REFATORADO COM FORK/JOIN ###
+    // --- Implementação da Predição com Fork/Join ---
+
+    private static class PredictTask extends RecursiveAction {
+        private final List<String> userChunk;
+        private final Map<String, List<Rating>> ratingsByUser;
+        private final Map<String, List<String>> genresByTitle;
+        private final ConcurrentMap<String, Map<String, Double>> matrix;
+        private static final int THRESHOLD = 100; // Limite para processamento direto
+
+        PredictTask(List<String> userChunk, Map<String, List<Rating>> ratingsByUser, Map<String, List<String>> genresByTitle, ConcurrentMap<String, Map<String, Double>> matrix) {
+            this.userChunk = userChunk;
+            this.ratingsByUser = ratingsByUser;
+            this.genresByTitle = genresByTitle;
+            this.matrix = matrix;
+        }
+
+        @Override
+        protected void compute() {
+            if (userChunk.size() <= THRESHOLD) {
+                // Caso base: processa o bloco de usuários
+                for (String user : userChunk) {
+                    double[] userVec = userFactors.get(user);
+                    if (userVec == null) continue;
+
+                    Map<String, Double> userRatings = new ConcurrentHashMap<>();
+                    List<Rating> knownRatings = ratingsByUser.get(user);
+                    if (knownRatings != null) {
+                        for (Rating r : knownRatings) {
+                            userRatings.put(r.getTitle(), r.getRating());
+                        }
+                    }
+
+                    genresByTitle.forEach((title, genres) -> {
+                        if (!userRatings.containsKey(title)) {
+                            double predicted = 0.0;
+                            int validGenres = 0;
+                            for (String genre : genres) {
+                                double[] genreVec = genreFactors.get(genre);
+                                if (genreVec != null) {
+                                    predicted += dot(userVec, genreVec);
+                                    validGenres++;
+                                }
+                            }
+                            if (validGenres > 0) {
+                                userRatings.put(title, predicted / validGenres);
+                            }
+                        }
+                    });
+                    matrix.put(user, userRatings);
+                }
+            } else {
+                // Caso recursivo: divide a tarefa
+                int mid = userChunk.size() / 2;
+                PredictTask left = new PredictTask(userChunk.subList(0, mid), ratingsByUser, genresByTitle, matrix);
+                PredictTask right = new PredictTask(userChunk.subList(mid, userChunk.size()), ratingsByUser, genresByTitle, matrix);
+                invokeAll(left, right);
+            }
+        }
+    }
+
     private static ConcurrentMap<String, Map<String, Double>> predictRatingsMatrix(ConcurrentLinkedQueue<Rating> ratings) {
-        System.out.println("Iniciando geração da matriz de predição com Fork/Join.");
-        final Map<String, List<Rating>> ratingsByUser = ratings.stream().collect(Collectors.groupingBy(Rating::getUserId));
-        final Map<String, List<Rating>> ratingsByTitle = ratings.stream().collect(Collectors.groupingBy(Rating::getTitle));
+        System.out.println("Iniciando geração da matriz de predições com Fork/Join Framework.");
+        Map<String, List<Rating>> ratingsByUser = ratings.stream().collect(Collectors.groupingBy(Rating::getUserId));
+        Map<String, List<String>> genresByTitle = ratings.stream()
+                .collect(Collectors.toConcurrentMap(Rating::getTitle, Rating::getGenres, (e, r) -> e));
 
         ConcurrentMap<String, Map<String, Double>> matrix = new ConcurrentHashMap<>();
+        ForkJoinPool forkJoinPool = new ForkJoinPool();
+
         List<String> userList = new ArrayList<>(allUsers);
+        PredictTask mainTask = new PredictTask(userList, ratingsByUser, genresByTitle, matrix);
+        forkJoinPool.invoke(mainTask);
 
-        PredictionTask mainTask = new PredictionTask(userList, matrix, ratingsByUser, ratingsByTitle);
-        pool.invoke(mainTask); // Invoca a tarefa principal
-
+        forkJoinPool.shutdown();
         return matrix;
     }
 
@@ -291,6 +281,8 @@ public class MovieRecommenderSGD {
             }
         }
 
+
+
         List<Future<?>> futures = new ArrayList<>();
 
         int usersPerFileTarget = 15;
@@ -326,16 +318,22 @@ public class MovieRecommenderSGD {
 
                     try (JsonWriter jsonWriter = new JsonWriter(new FileWriter(fullPath))) {
                         jsonWriter.setIndent("  ");
+
                         jsonWriter.beginArray();
+
                         for (String user : currentUserChunk) {
                             jsonWriter.beginObject();
                             jsonWriter.name("user_id").value(user);
+
                             jsonWriter.name("movies");
                             jsonWriter.beginArray();
+
                             Map<String, Double> userRatings = finalPredictedMatrix.getOrDefault(user, Collections.emptyMap());
+
                             for (String title : finalAllTitlesOrdered) {
                                 jsonWriter.beginObject();
                                 jsonWriter.name("title").value(title);
+
                                 jsonWriter.name("genre");
                                 jsonWriter.beginArray();
                                 List<String> genres = finalGenreMap.getOrDefault(title, Collections.emptyList());
@@ -343,6 +341,7 @@ public class MovieRecommenderSGD {
                                     jsonWriter.value(genre);
                                 }
                                 jsonWriter.endArray();
+
                                 jsonWriter.name("rating");
                                 Double rating = userRatings.get(title);
                                 if (rating != null) {
@@ -356,6 +355,7 @@ public class MovieRecommenderSGD {
                             jsonWriter.endObject();
                         }
                         jsonWriter.endArray();
+
                     } catch (IOException e) {
                         System.err.println("Erro ao escrever arquivo " + finalChunkFilename + ": " + e.getMessage());
                         e.printStackTrace();
@@ -373,24 +373,17 @@ public class MovieRecommenderSGD {
                 } catch (ExecutionException e) {
                     System.err.println("Erro na execução do salvamento de arquivo: " +
                             (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()));
+
                 }
             }
         }
+
         System.out.println("Processo de salvamento em múltiplos arquivos concluído.");
     }
 
     public static double dot(double[] a, double[] b) {
-        final int length = a.length;
-        double sum0 = 0.0, sum1 = 0.0, sum2 = 0.0, sum3 = 0.0;
-        int i = 0;
-        for (; i <= length - 4; i += 4) {
-            sum0 += a[i] * b[i];
-            sum1 += a[i + 1] * b[i + 1];
-            sum2 += a[i + 2] * b[i + 2];
-            sum3 += a[i + 3] * b[i + 3];
-        }
-        double sum = sum0 + sum1 + sum2 + sum3;
-        for (; i < length; i++) {
+        double sum = 0.0;
+        for (int i = 0; i < a.length; i++) {
             sum += a[i] * b[i];
         }
         return sum;
@@ -398,8 +391,10 @@ public class MovieRecommenderSGD {
 
     public static void main(String[] args) throws Exception {
         long startTime = System.nanoTime();
+
         Set<String> arquivos = Set.of("../dataset/avaliacoes_completas50MB.json");
         ConcurrentLinkedQueue<Rating> ratings = loadRatingsParallel(arquivos);
+
         long readTime = System.nanoTime();
         System.out.printf("lidos em: %.2f segundos%n", (readTime - startTime) / 1e9);
 
@@ -415,18 +410,15 @@ public class MovieRecommenderSGD {
         long matrixTime = System.nanoTime();
         System.out.printf("matrixGen rodou em: %.2f segundos%n", (matrixTime - trainingTime) / 1e9);
 
-        String outputDir = "output_ratings";
-        new java.io.File(outputDir).mkdirs();
-        String baseFilename = "predicted_user_ratings_forkjoin";
+        // --- Chamada da Função Modificada ---
+        String outputDir = "output_ratings"; // Crie este diretório ou use um existente
+        new java.io.File(outputDir).mkdirs(); // Garante que o diretório exista
+        String baseFilename = "predicted_user_ratings";
 
-        long printTime = System.nanoTime();
         savePredictedRatingsToJson(ratings, matrix, outputDir, baseFilename);
-        long saveTime = System.nanoTime();
-        System.out.printf("saveJson rodou em: %.2f segundos%n", (saveTime - printTime) / 1e9);
+
 
         long endTime = System.nanoTime();
         System.out.printf("Tempo total: %.2f segundos%n", (endTime - startTime) / 1e9);
-
-        pool.shutdown(); // Desliga o pool Fork/Join ao final da aplicação.
     }
 }
